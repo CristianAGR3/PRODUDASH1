@@ -4,9 +4,17 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Dashboard operativo de producción conectado a datos JSON exportados desde Excel.">
+    <meta name="theme-color" content="#090d0a">
+    <meta property="og:title" content="PRODU · Control operativo">
+    <meta property="og:description" content="Monitoreo de CR, envíos y producción en una sola vista.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="https://raw.githubusercontent.com/CristianAGR3/PRODUDASH/main/og.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/CristianAGR3/PRODUDASH/main/og.png">
     <title>Dashboard Producción</title>
     <link rel="icon" href="favicon.svg">
-    <link rel="stylesheet" href="styles.css?v=20260804-advanced">
+    <script>try{document.documentElement.dataset.theme=localStorage.getItem("produ-theme")||"light"}catch(e){}</script>
+    <link rel="stylesheet" href="styles.css?v=20260804-survival">
   </head>
   <body>
     <div class="app-shell">
@@ -34,6 +42,10 @@
             <p class="subtitle">Paquetes recibidos, CR, envíos y cortador responsable.</p>
           </div>
           <div class="header-actions">
+            <button id="themeBtn" class="theme-button" type="button" aria-pressed="false" title="Cambiar modo claro u oscuro">
+              <span id="themeIcon" aria-hidden="true">☾</span>
+              <span id="themeBtnText">Modo oscuro</span>
+            </button>
             <button id="refreshBtn" class="publish-button" type="button">
               <span class="publish-icon" aria-hidden="true">↻</span>
               <span id="refreshBtnText">Actualizar datos</span>
@@ -123,6 +135,6 @@
         <footer><span>Dashboard de producción</span><span id="footerMeta">Datos JSON generados desde PRODUCCION.xlsm</span></footer>
       </main>
     </div>
-    <script src="app.js?v=20260804-advanced"></script>
+    <script src="app.js?v=20260804-survival"></script>
   </body>
 </html>

@@ -47,6 +47,15 @@ function showMessage(tone, message) {
   node.hidden = false;
 }
 
+function applyTheme(theme) {
+  const dark = theme === "dark";
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  $("#themeBtn").setAttribute("aria-pressed", String(dark));
+  $("#themeIcon").textContent = dark ? "☀" : "☾";
+  $("#themeBtnText").textContent = dark ? "Modo claro" : "Modo oscuro";
+  try { localStorage.setItem("produ-theme", dark ? "dark" : "light"); } catch (error) { /* Preferencia opcional. */ }
+}
+
 function unique(values) {
   return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, "es-MX"));
 }
@@ -269,6 +278,7 @@ $("#productionFilter").addEventListener("change", (event) => { state.production 
 $("#dateFromFilter").addEventListener("change", (event) => { state.dateFrom = event.target.value; render(); });
 $("#dateToFilter").addEventListener("change", (event) => { state.dateTo = event.target.value; render(); });
 $("#refreshBtn").addEventListener("click", () => loadData());
+$("#themeBtn").addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
 $("#resetBtn").addEventListener("click", resetFilters);
 
 $$('.quick-tabs button').forEach((button) => button.addEventListener("click", () => {
@@ -286,4 +296,5 @@ $$('.advanced-status-grid button').forEach((button) => button.addEventListener("
   $("#pedidos").scrollIntoView({ behavior: "smooth", block: "start" });
 }));
 
+applyTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 loadData({ quiet: true });
