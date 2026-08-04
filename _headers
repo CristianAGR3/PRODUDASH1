@@ -1,0 +1,5 @@
+/data/*
+  Cache-Control: no-store, no-cache, must-revalidate
+
+/index.html
+  Cache-Control: no-cache
