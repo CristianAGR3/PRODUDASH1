@@ -1,0 +1,52 @@
+{
+  "id": "./",
+  "name": "PRODU - Control operativo",
+  "short_name": "PRODU",
+  "description": "Dashboard de pedidos, búsqueda avanzada y rendimiento de cortadores.",
+  "lang": "es-MX",
+  "start_url": "./?module=orders&source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#090d0a",
+  "theme_color": "#090d0a",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Todos los pedidos",
+      "short_name": "Pedidos",
+      "description": "Abrir la información completa de pedidos.",
+      "url": "./?module=orders",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Buscador avanzado",
+      "short_name": "Buscador",
+      "description": "Consultar CR y envíos con filtros avanzados.",
+      "url": "./?module=search",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Cortadores",
+      "short_name": "Cortadores",
+      "description": "Revisar el avance de los cortadores.",
+      "url": "./?module=cutters",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

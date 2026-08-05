@@ -2,19 +2,25 @@
 <html lang="es">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Dashboard operativo de producción conectado a datos JSON exportados desde Excel.">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="Dashboard operativo de producción para consultar pedidos, búsquedas y cortadores.">
     <meta name="theme-color" content="#090d0a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PRODU">
     <meta property="og:title" content="PRODU · Control operativo">
-    <meta property="og:description" content="Monitoreo de CR, envíos y producción en una sola vista.">
+    <meta property="og:description" content="Monitoreo de CR, envíos, pedidos y cortadores en una sola aplicación.">
     <meta property="og:type" content="website">
     <meta property="og:image" content="https://raw.githubusercontent.com/CristianAGR3/PRODUDASH/main/og.png">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content="https://raw.githubusercontent.com/CristianAGR3/PRODUDASH/main/og.png">
     <title>Dashboard Producción</title>
     <link rel="icon" href="favicon.svg">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="icon-192.png">
     <script>try{document.documentElement.dataset.theme=localStorage.getItem("produ-theme")||"light"}catch(e){}</script>
-    <link rel="stylesheet" href="styles.css?v=20260804-mythic-light">
+    <link rel="stylesheet" href="styles.css?v=20260805-pwa-modules">
   </head>
   <body>
     <div class="app-shell">
@@ -23,11 +29,19 @@
           <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
           <span><strong>PRODU</strong><small>Control operativo</small></span>
         </div>
-        <nav aria-label="Navegación principal">
-          <a class="nav-item active" href="#resumen"><span aria-hidden="true">⌁</span> Operación</a>
-          <a class="nav-item" href="#busqueda-avanzada"><span aria-hidden="true">⌕</span> Búsqueda avanzada</a>
-          <a class="nav-item" href="#cortadores"><span aria-hidden="true">◉</span> Cortadores</a>
+
+        <nav class="module-nav" aria-label="Módulos del dashboard" role="tablist" aria-orientation="vertical">
+          <button id="nav-orders" class="nav-item active" type="button" role="tab" aria-selected="true" aria-controls="module-orders" data-module="orders">
+            <span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Pedidos</span>
+          </button>
+          <button id="nav-search" class="nav-item" type="button" role="tab" aria-selected="false" aria-controls="module-search" data-module="search">
+            <span class="nav-icon" aria-hidden="true">⌕</span><span class="nav-label">Buscador</span>
+          </button>
+          <button id="nav-cutters" class="nav-item" type="button" role="tab" aria-selected="false" aria-controls="module-cutters" data-module="cutters">
+            <span class="nav-icon" aria-hidden="true">◉</span><span class="nav-label">Cortadores</span>
+          </button>
         </nav>
+
         <div class="source-card">
           <span class="source-dot" aria-hidden="true"></span>
           <div><strong>JSON conectado</strong><small id="sourceName">PRODUCCION.xlsm · GitHub</small></div>
@@ -35,20 +49,21 @@
       </aside>
 
       <main>
-        <header class="topbar" id="resumen">
-          <div>
-            <p class="eyebrow">CENTRO DE PRODUCCIÓN</p>
-            <h1>Panel de movimientos</h1>
-            <p class="subtitle">Paquetes recibidos, CR, envíos y cortador responsable.</p>
+        <header class="topbar">
+          <div class="module-heading">
+            <p id="moduleEyebrow" class="eyebrow">TRAZABILIDAD</p>
+            <h1 id="moduleTitle">Todos los pedidos</h1>
+            <p id="moduleSubtitle" class="subtitle">Información completa de CR, envíos, producción y entrega.</p>
           </div>
           <div class="header-actions">
+            <button id="installBtn" class="install-button" type="button" hidden>
+              <span aria-hidden="true">⇩</span><span>Instalar app</span>
+            </button>
             <button id="themeBtn" class="theme-button" type="button" aria-pressed="false" title="Cambiar modo claro u oscuro">
-              <span id="themeIcon" aria-hidden="true">☾</span>
-              <span id="themeBtnText">Modo oscuro</span>
+              <span id="themeIcon" aria-hidden="true">☾</span><span id="themeBtnText">Modo oscuro</span>
             </button>
             <button id="refreshBtn" class="publish-button" type="button">
-              <span class="publish-icon" aria-hidden="true">↻</span>
-              <span id="refreshBtnText">Actualizar datos</span>
+              <span class="publish-icon" aria-hidden="true">↻</span><span id="refreshBtnText">Actualizar datos</span>
             </button>
             <div class="snapshot">
               <span class="live-dot" aria-hidden="true"></span>
@@ -61,80 +76,108 @@
           <span aria-hidden="true"></span>Cargando el JSON publicado…
         </div>
 
-        <section id="busqueda-avanzada" class="panel advanced-search-panel">
-          <div class="advanced-search-heading">
-            <div><p class="eyebrow">CONSULTA OPERATIVA</p><h2>Búsqueda avanzada</h2><p>Localiza CR y envíos terminados o en proceso.</p></div>
-            <button id="resetBtn" class="reset-button" type="button">Limpiar búsqueda</button>
-          </div>
-          <div class="filters advanced-filters" aria-label="Búsqueda avanzada de pedidos">
-            <label class="search-box advanced-text-search">
-              <span aria-hidden="true">⌕</span>
-              <input id="searchInput" type="search" placeholder="Pedido, cliente, cortador, recibió o chofer…" aria-label="Buscar pedido, cliente, cortador, recibió o chofer">
-            </label>
-            <label class="filter-field"><span>Tipo</span><select id="movementFilter"><option value="Todos">CR y envíos</option><option value="CR">CR</option><option value="Envío producción">Envíos</option></select></label>
-            <label class="filter-field"><span>Estado</span><select id="productionFilter"><option value="Todos">Todos los estados</option><option value="TERMINADO">Terminados</option><option value="EN PROCESO">En proceso</option></select></label>
-            <label class="filter-field"><span>Cortador</span><select id="cutterFilter"><option value="Todos">Todos los cortadores</option></select></label>
-            <label class="filter-field"><span>Desde</span><input id="dateFromFilter" type="date"></label>
-            <label class="filter-field"><span>Hasta</span><input id="dateToFilter" type="date"></label>
-          </div>
-          <div class="advanced-status-grid" aria-label="Resumen rápido por tipo y estado">
-            <button type="button" data-advanced-movement="CR" data-advanced-status="TERMINADO"><span>CR terminados</span><strong id="advancedCrFinished">0</strong><small>Ver resultados</small></button>
-            <button type="button" data-advanced-movement="CR" data-advanced-status="EN PROCESO"><span>CR en proceso</span><strong id="advancedCrProcess">0</strong><small>Ver resultados</small></button>
-            <button type="button" data-advanced-movement="Envío producción" data-advanced-status="TERMINADO"><span>Envíos terminados</span><strong id="advancedShipmentFinished">0</strong><small>Ver resultados</small></button>
-            <button type="button" data-advanced-movement="Envío producción" data-advanced-status="EN PROCESO"><span>Envíos en proceso</span><strong id="advancedShipmentProcess">0</strong><small>Ver resultados</small></button>
-          </div>
-          <p id="filterSummary" class="filter-summary" aria-live="polite"></p>
-        </section>
+        <section id="module-orders" class="module-section active" role="tabpanel" aria-labelledby="nav-orders" data-module-panel="orders">
+          <section class="kpi-grid" aria-label="Indicadores principales">
+            <article class="kpi-card blue"><div class="kpi-head"><span>Paquetes recibidos</span><b aria-hidden="true">◇</b></div><strong id="kpiTotal" class="kpi-value">00</strong><small>registrados en el Excel</small></article>
+            <article class="kpi-card mint"><div class="kpi-head"><span>CR</span><b aria-hidden="true">↙</b></div><strong id="kpiPickup" class="kpi-value">00</strong><small id="kpiPickupNote">0% del movimiento</small></article>
+            <article class="kpi-card cyan"><div class="kpi-head"><span>Envíos de producción</span><b aria-hidden="true">↗</b></div><strong id="kpiShipments" class="kpi-value">00</strong><small>salidas programadas</small></article>
+            <article class="kpi-card lime"><div class="kpi-head"><span>Pedidos terminados</span><b aria-hidden="true">✓</b></div><strong id="kpiFinished" class="kpi-value">00</strong><small id="kpiFinishedNote">0% de avance</small></article>
+            <article class="kpi-card violet"><div class="kpi-head"><span>Pedidos entregados</span><b aria-hidden="true">◆</b></div><strong id="kpiDelivered" class="kpi-value">00</strong><small id="kpiDeliveredNote">0 pendientes de entrega</small></article>
+          </section>
 
-        <section class="kpi-grid" aria-label="Indicadores principales">
-          <article class="kpi-card blue"><div class="kpi-head"><span>Paquetes recibidos</span><b aria-hidden="true">◇</b></div><strong id="kpiTotal" class="kpi-value">00</strong><small>registrados en el Excel</small></article>
-          <article class="kpi-card mint"><div class="kpi-head"><span>CR</span><b aria-hidden="true">↙</b></div><strong id="kpiPickup" class="kpi-value">00</strong><small id="kpiPickupNote">0% del movimiento</small></article>
-          <article class="kpi-card cyan"><div class="kpi-head"><span>Envíos de producción</span><b aria-hidden="true">↗</b></div><strong id="kpiShipments" class="kpi-value">00</strong><small>salidas programadas</small></article>
-          <article class="kpi-card lime"><div class="kpi-head"><span>Pedidos terminados</span><b aria-hidden="true">✓</b></div><strong id="kpiFinished" class="kpi-value">00</strong><small id="kpiFinishedNote">0% de avance</small></article>
-          <article class="kpi-card violet"><div class="kpi-head"><span>Pedidos entregados</span><b aria-hidden="true">◆</b></div><strong id="kpiDelivered" class="kpi-value">00</strong><small id="kpiDeliveredNote">0 pendientes de entrega</small></article>
-        </section>
-
-        <section class="insights-grid">
-          <article class="panel progress-panel">
-            <div class="panel-heading"><div><p class="eyebrow">PRODUCCIÓN</p><h2>Avance del corte</h2></div><span id="completionBadge" class="rate-badge">0%</span></div>
-            <div id="completionProgress" class="total-progress" aria-label="Avance de producción"><span></span></div>
-            <div class="progress-copy"><strong id="finishedCopy">0 terminados</strong><span id="pendingCopy">0 pendientes</span></div>
-            <div id="cutterList" class="cutter-list"></div>
-          </article>
-
-          <article class="panel route-panel">
-            <div class="panel-heading"><div><p class="eyebrow">MOVIMIENTO</p><h2>Ruta de salida</h2></div><span id="routeCount" class="panel-count">0</span></div>
-            <div class="route-content">
-              <div id="routeDonut" class="donut" role="img" aria-label="Distribución de movimientos"><div><strong id="donutTotal">0</strong><span>pedidos</span></div></div>
-              <div class="legend">
-                <div><span class="legend-swatch pickup"></span><p><strong>CR</strong><small id="pickupLegend">0 pedidos</small></p><b id="pickupPercent">0%</b></div>
-                <div><span class="legend-swatch shipment"></span><p><strong>Envío producción</strong><small id="shipmentLegend">0 pedidos</small></p><b id="shipmentPercent">0%</b></div>
+          <section class="insights-grid orders-insights">
+            <article class="panel order-status-panel">
+              <div class="panel-heading"><div><p class="eyebrow">PRODUCCIÓN</p><h2>Estado general de pedidos</h2></div><span id="ordersCompletionBadge" class="rate-badge">0%</span></div>
+              <div id="ordersCompletionProgress" class="total-progress" aria-label="Avance general"><span></span></div>
+              <div class="progress-copy"><strong id="ordersFinishedCopy">0 terminados</strong><span id="ordersProcessCopy">0 en proceso</span></div>
+              <div class="order-status-strip">
+                <div><span>Terminados</span><strong id="ordersFinishedStat">0</strong></div>
+                <div><span>En proceso</span><strong id="ordersProcessStat">0</strong></div>
+                <div><span>Entregados</span><strong id="ordersDeliveredStat">0</strong></div>
               </div>
+            </article>
+
+            <article class="panel route-panel">
+              <div class="panel-heading"><div><p class="eyebrow">MOVIMIENTO</p><h2>Ruta de salida</h2></div><span id="routeCount" class="panel-count">0</span></div>
+              <div class="route-content">
+                <div id="routeDonut" class="donut" role="img" aria-label="Distribución de movimientos"><div><strong id="donutTotal">0</strong><span>pedidos</span></div></div>
+                <div class="legend">
+                  <div><span class="legend-swatch pickup"></span><p><strong>CR</strong><small id="pickupLegend">0 pedidos</small></p><b id="pickupPercent">0%</b></div>
+                  <div><span class="legend-swatch shipment"></span><p><strong>Envío producción</strong><small id="shipmentLegend">0 pedidos</small></p><b id="shipmentPercent">0%</b></div>
+                </div>
+              </div>
+              <div class="delivery-strip"><span><i class="delivered-dot"></i> Entregados</span><strong id="deliveredStrip">0</strong><span><i class="pending-dot"></i> Pendientes de entrega</span><strong id="pendingDeliveryStrip">0</strong></div>
+            </article>
+          </section>
+
+          <section class="panel orders-panel">
+            <div class="orders-heading">
+              <div><p class="eyebrow">TODOS LOS REGISTROS</p><h2>Información completa de pedidos</h2></div>
+              <span id="ordersCountLabel" class="results-badge">0 pedidos</span>
             </div>
-            <div class="delivery-strip"><span><i class="delivered-dot"></i> Entregados</span><strong id="deliveredStrip">0</strong><span><i class="pending-dot"></i> Pendientes de entrega</span><strong id="pendingDeliveryStrip">0</strong></div>
-          </article>
+            <div class="table-wrap responsive-table">
+              <table>
+                <thead><tr><th>Pedido</th><th>Cliente</th><th>Movimiento</th><th>Cortador responsable</th><th>Producción</th><th>Entrega</th><th>Registro</th></tr></thead>
+                <tbody id="ordersBody"><tr><td colspan="7" class="empty-state">Cargando pedidos…</td></tr></tbody>
+              </table>
+            </div>
+          </section>
         </section>
 
-        <section class="panel orders-panel" id="pedidos">
-          <div class="orders-heading">
-            <div><p class="eyebrow">TRAZABILIDAD</p><h2>Pedidos y cortador responsable</h2></div>
-            <div class="quick-tabs" aria-label="Filtro rápido de producción">
-              <button type="button" data-status="Todos" class="selected">Todos</button>
-              <button type="button" data-status="EN PROCESO">En proceso</button>
-              <button type="button" data-status="TERMINADO">Terminados</button>
+        <section id="module-search" class="module-section" role="tabpanel" aria-labelledby="nav-search" data-module-panel="search" hidden>
+          <section class="panel advanced-search-panel">
+            <div class="advanced-search-heading">
+              <div><p class="eyebrow">CONSULTA OPERATIVA</p><h2>Búsqueda avanzada</h2><p>Localiza CR y envíos terminados o en proceso.</p></div>
+              <button id="resetBtn" class="reset-button" type="button">Limpiar búsqueda</button>
             </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Pedido</th><th>Cliente</th><th>Movimiento</th><th>Cortador responsable</th><th>Producción</th><th>Entrega</th><th>Registro</th></tr></thead>
-              <tbody id="ordersBody"><tr><td colspan="7" class="empty-state">Cargando pedidos…</td></tr></tbody>
-            </table>
-          </div>
+            <div class="filters advanced-filters" aria-label="Búsqueda avanzada de pedidos">
+              <label class="search-box advanced-text-search"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Pedido, cliente, cortador, recibió o chofer…" aria-label="Buscar pedido, cliente, cortador, recibió o chofer"></label>
+              <label class="filter-field"><span>Tipo</span><select id="movementFilter"><option value="Todos">CR y envíos</option><option value="CR">CR</option><option value="Envío producción">Envíos</option></select></label>
+              <label class="filter-field"><span>Estado</span><select id="productionFilter"><option value="Todos">Todos los estados</option><option value="TERMINADO">Terminados</option><option value="EN PROCESO">En proceso</option></select></label>
+              <label class="filter-field"><span>Cortador</span><select id="cutterFilter"><option value="Todos">Todos los cortadores</option></select></label>
+              <label class="filter-field"><span>Desde</span><input id="dateFromFilter" type="date"></label>
+              <label class="filter-field"><span>Hasta</span><input id="dateToFilter" type="date"></label>
+            </div>
+            <div class="advanced-status-grid" aria-label="Resumen rápido por tipo y estado">
+              <button type="button" data-advanced-movement="CR" data-advanced-status="TERMINADO"><span>CR terminados</span><strong id="advancedCrFinished">0</strong><small>Ver resultados</small></button>
+              <button type="button" data-advanced-movement="CR" data-advanced-status="EN PROCESO"><span>CR en proceso</span><strong id="advancedCrProcess">0</strong><small>Ver resultados</small></button>
+              <button type="button" data-advanced-movement="Envío producción" data-advanced-status="TERMINADO"><span>Envíos terminados</span><strong id="advancedShipmentFinished">0</strong><small>Ver resultados</small></button>
+              <button type="button" data-advanced-movement="Envío producción" data-advanced-status="EN PROCESO"><span>Envíos en proceso</span><strong id="advancedShipmentProcess">0</strong><small>Ver resultados</small></button>
+            </div>
+            <p id="filterSummary" class="filter-summary" aria-live="polite"></p>
+          </section>
+
+          <section class="panel orders-panel search-results-panel">
+            <div class="orders-heading"><div><p class="eyebrow">RESULTADOS</p><h2>Pedidos encontrados</h2></div><span id="searchCountLabel" class="results-badge">0 resultados</span></div>
+            <div class="table-wrap responsive-table">
+              <table>
+                <thead><tr><th>Pedido</th><th>Cliente</th><th>Movimiento</th><th>Cortador responsable</th><th>Producción</th><th>Entrega</th><th>Registro</th></tr></thead>
+                <tbody id="searchOrdersBody"><tr><td colspan="7" class="empty-state">Usa los filtros para consultar pedidos.</td></tr></tbody>
+              </table>
+            </div>
+          </section>
         </section>
 
-        <footer><span>Dashboard de producción</span><span id="footerMeta">Datos JSON generados desde PRODUCCION.xlsm</span></footer>
+        <section id="module-cutters" class="module-section" role="tabpanel" aria-labelledby="nav-cutters" data-module-panel="cutters" hidden>
+          <section class="panel cutter-overview-panel">
+            <div class="panel-heading"><div><p class="eyebrow">EQUIPO DE CORTE</p><h2>Rendimiento general</h2></div><span id="completionBadge" class="rate-badge">0%</span></div>
+            <div id="completionProgress" class="total-progress" aria-label="Avance de producción"><span></span></div>
+            <div class="progress-copy"><strong id="finishedCopy">0 terminados</strong><span id="pendingCopy">0 en proceso</span></div>
+            <div id="cutterSummary" class="cutter-summary-strip"></div>
+          </section>
+          <section>
+            <div class="module-section-heading"><div><p class="eyebrow">RESPONSABLES</p><h2>Detalle por cortador</h2></div><p>Selecciona “Ver pedidos” para abrir su búsqueda.</p></div>
+            <div id="cutterGrid" class="cutter-grid"></div>
+          </section>
+        </section>
+
+        <footer>
+          <span>Dashboard de producción · PWA</span>
+          <span id="connectionStatus" class="connection-status">Comprobando conexión…</span>
+          <span id="footerMeta">Datos JSON generados desde PRODUCCION.xlsm</span>
+        </footer>
       </main>
     </div>
-    <script src="app.js?v=20260804-mythic-light"></script>
+    <script src="app.js?v=20260805-pwa-modules"></script>
   </body>
 </html>
