@@ -50,6 +50,8 @@ function showMessage(tone, message) {
 function applyTheme(theme) {
   const dark = theme === "dark";
   document.documentElement.dataset.theme = dark ? "dark" : "light";
+  const themeColor = document.querySelector('meta[name="theme-color"]');
+  if (themeColor) themeColor.setAttribute("content", dark ? "#090d0a" : "#efe3cc");
   $("#themeBtn").setAttribute("aria-pressed", String(dark));
   $("#themeIcon").textContent = dark ? "☀" : "☾";
   $("#themeBtnText").textContent = dark ? "Modo claro" : "Modo oscuro";
