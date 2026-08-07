@@ -1,13 +1,26 @@
 {
   "meta": {
     "schemaVersion": 2,
-    "generatedAt": "2026-08-07T17:48:11.229Z",
+    "generatedAt": "2026-08-07T18:59:00.345Z",
     "source": "PRODUCCION.xlsm",
-    "sourceModifiedAt": "2026-08-07T17:48:05.379Z",
-    "lastRecordAt": "2026-08-07T11:43:10",
-    "totalOrders": 46
+    "sourceModifiedAt": "2026-08-07T18:58:48.815Z",
+    "lastRecordAt": "2026-08-07T12:19:36",
+    "totalOrders": 47
   },
   "orders": [
+    {
+      "id": "361701",
+      "client": "HECTOR QUIJANO",
+      "movement": "Envío producción",
+      "cutter": "JOAN",
+      "production": "TERMINADO",
+      "delivery": "PENDIENTE",
+      "receiver": "VICTOR",
+      "driver": "PENDIENTE",
+      "date": "07/08/2026",
+      "time": "12:19",
+      "recordAt": "2026-08-07T12:19:36"
+    },
     {
       "id": "361732",
       "client": "IVAN ROSALES",
@@ -143,7 +156,7 @@
       "client": "ERNESTO PEÑA GODINEZ",
       "movement": "CR",
       "cutter": "ROBERTO",
-      "production": "PENDIENTE",
+      "production": "TERMINADO",
       "delivery": "PENDIENTE",
       "receiver": "VICTOR",
       "driver": null,
@@ -182,7 +195,7 @@
       "client": "OMAR JIMENEZ",
       "movement": "Envío producción",
       "cutter": "CLAUDIO",
-      "production": "PENDIENTE",
+      "production": "TERMINADO",
       "delivery": "PENDIENTE",
       "receiver": "VICTOR",
       "driver": "PENDIENTE",
@@ -300,7 +313,7 @@
       "movement": "Envío producción",
       "cutter": "ROBERTO",
       "production": "TERMINADO",
-      "delivery": "ENTREGADO",
+      "delivery": "PENDIENTE",
       "receiver": "VICTOR",
       "driver": "PENDIENTE",
       "date": "05/08/2026",
@@ -456,7 +469,7 @@
       "movement": "CR",
       "cutter": "ROBERTO",
       "production": "TERMINADO",
-      "delivery": "PENDIENTE",
+      "delivery": "ENTREGADO",
       "receiver": "VICTOR",
       "driver": null,
       "date": "04/08/2026",
