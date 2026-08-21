@@ -1,4 +1,4 @@
-const CACHE_NAME = "produ-pwa-20260805-v1";
+const CACHE_NAME = "produ-pwa-20260821-v6-terror-logo";
 const CACHE_PREFIX = "produ-pwa-";
 const APP_SHELL = [
   "./",
