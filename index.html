@@ -20,7 +20,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="icon-192.png">
     <script>try{document.documentElement.dataset.theme=localStorage.getItem("produ-theme")||"light"}catch(e){}</script>
-    <link rel="stylesheet" href="styles.css?v=20260902-cutter-charts">
+    <link rel="stylesheet" href="styles.css?v=20260902-tony-voice">
   </head>
   <body>
     <div class="app-shell">
@@ -54,9 +54,9 @@
       <main>
         <header class="topbar">
           <div class="module-heading">
-            <p id="moduleEyebrow" class="eyebrow">TRAZABILIDAD</p>
-            <h1 id="moduleTitle">Todos los pedidos</h1>
-            <p id="moduleSubtitle" class="subtitle">Información completa de CR, envíos, producción y entrega.</p>
+            <p id="moduleEyebrow" class="eyebrow">ACTIVIDAD</p>
+            <h1 id="moduleTitle">Pedidos y notificaciones</h1>
+            <p id="moduleSubtitle" class="subtitle">Revisa los últimos ingresos y escucha el reporte completo del asistente.</p>
           </div>
           <div class="header-actions">
             <button id="installBtn" class="install-button" type="button" hidden>
@@ -113,17 +113,56 @@
             </article>
           </section>
 
-          <section class="panel orders-panel">
-            <div class="orders-heading">
-              <div><p class="eyebrow">TODOS LOS REGISTROS</p><h2>Información completa de pedidos</h2></div>
-              <span id="ordersCountLabel" class="results-badge">0 pedidos</span>
-            </div>
-            <div class="table-wrap responsive-table">
-              <table>
-                <thead><tr><th>Pedido</th><th>Cliente</th><th>Movimiento</th><th>Cortador responsable</th><th>Producción</th><th>Entrega</th><th>Registro</th></tr></thead>
-                <tbody id="ordersBody"><tr><td colspan="7" class="empty-state">Cargando pedidos…</td></tr></tbody>
-              </table>
-            </div>
+          <section class="notification-center" aria-label="Notificaciones y asistente virtual">
+            <article class="panel recent-notifications-panel">
+              <div class="notification-panel-heading">
+                <div><p class="eyebrow">ACTIVIDAD RECIENTE</p><h2>Últimos 5 pedidos ingresados</h2></div>
+                <span id="recentNotificationsCount" class="results-badge">0 recientes</span>
+              </div>
+              <p class="notification-panel-copy"><span class="live-dot" aria-hidden="true"></span>Se actualizan automáticamente desde el archivo de producción.</p>
+              <div id="recentNotifications" class="recent-notification-list" aria-live="polite">
+                <p class="empty-state">Cargando notificaciones…</p>
+              </div>
+            </article>
+
+            <article class="panel virtual-assistant-panel">
+              <div class="assistant-heading">
+                <div class="assistant-identity">
+                  <span class="assistant-mascot">
+                    <img class="tony-mascot-dark" src="tony-mantarraya-oscura.png" alt="Tony, asistente virtual con forma de mantarraya">
+                    <img class="tony-mascot-light" src="tony-mantarraya-blanca.png" alt="" aria-hidden="true">
+                  </span>
+                  <div><p class="eyebrow">TONY · ASISTENTE VIRTUAL</p><h2>Tony te informa</h2></div>
+                </div>
+                <span class="assistant-presence"><i aria-hidden="true"></i>Activo</span>
+              </div>
+              <div class="assistant-overview">
+                <div><small id="assistantContext">RESUMEN GENERAL</small><h3 id="assistantHeadline">Preparando notificaciones…</h3></div>
+                <span class="assistant-signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+              </div>
+              <div class="tony-voice-console">
+                <button id="voiceCommandBtn" class="tony-voice-button" type="button" aria-pressed="false">
+                  <span class="tony-mic-icon" aria-hidden="true">◉</span>
+                  <span><strong>Activar “Oye Tony”</strong><small>Toca una vez para conversar</small></span>
+                </button>
+                <div class="tony-listening-state">
+                  <i aria-hidden="true"></i>
+                  <span><small>MICRÓFONO</small><strong id="tonyCommandStatus">Desactivado</strong></span>
+                </div>
+              </div>
+              <p class="tony-command-example">Prueba: “Oye Tony, dime información sobre el pedido 310965” o menciona el nombre del cliente.</p>
+              <p id="tonyTranscript" class="tony-transcript" aria-live="polite" hidden></p>
+              <div id="assistantMetrics" class="assistant-metrics" aria-label="Indicadores del asistente"></div>
+              <div id="assistantMessage" class="assistant-message" aria-live="polite">
+                <p>Estoy revisando los pedidos más recientes.</p>
+              </div>
+              <div class="assistant-actions">
+                <button id="listenAssistantBtn" class="assistant-primary-action" type="button"><span aria-hidden="true">◖</span><span>Escuchar notificaciones</span></button>
+                <button id="assistantSummaryBtn" class="assistant-secondary-action" type="button" hidden>Volver al resumen</button>
+                <button id="stopAssistantBtn" class="assistant-secondary-action" type="button" hidden>Detener audio</button>
+              </div>
+              <p id="assistantSpeechStatus" class="assistant-speech-status">Tony responde con volumen suave y también puede leer el reporte completo.</p>
+            </article>
           </section>
         </section>
 
@@ -223,6 +262,6 @@
         </footer>
       </main>
     </div>
-    <script src="app.js?v=20260902-cutter-charts"></script>
+    <script src="app.js?v=20260902-tony-voice"></script>
   </body>
 </html>

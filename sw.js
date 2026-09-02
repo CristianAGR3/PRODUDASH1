@@ -1,4 +1,4 @@
-const CACHE_NAME = "produ-pwa-20260902-v7-cutter-charts";
+const CACHE_NAME = "produ-pwa-20260902-v11-tony-voice";
 const CACHE_PREFIX = "produ-pwa-";
 const APP_SHELL = [
   "./",
@@ -9,6 +9,8 @@ const APP_SHELL = [
   "./favicon.svg",
   "./icon-192.png",
   "./icon-512.png",
+  "./tony-mantarraya-oscura.png",
+  "./tony-mantarraya-blanca.png",
   "./data/produccion.json",
 ];
 

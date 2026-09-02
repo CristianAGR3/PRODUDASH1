@@ -3,9 +3,9 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 const MODULES = {
   orders: {
-    eyebrow: "TRAZABILIDAD",
-    title: "Todos los pedidos",
-    subtitle: "Información completa de CR, envíos, producción y entrega.",
+    eyebrow: "ACTIVIDAD",
+    title: "Pedidos y notificaciones",
+    subtitle: "Revisa los últimos ingresos y escucha el reporte completo del asistente.",
   },
   search: {
     eyebrow: "CONSULTA",
@@ -34,10 +34,16 @@ const state = {
   production: "Todos",
   dateFrom: "",
   dateTo: "",
+  activeNotificationId: "",
   activeModule: "orders",
 };
 
 let deferredInstallPrompt = null;
+let assistantUtterance = null;
+let tonyRecognition = null;
+let tonyVoiceEnabled = false;
+let tonyRecognitionRunning = false;
+let tonyRestartTimer = null;
 
 function normalize(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -104,6 +110,14 @@ function isFinished(order) {
 
 function isDelivered(order) {
   return normalize(order.delivery) === "entregado";
+}
+
+function isQueuedForDelivery(order) {
+  return normalize(order.delivery) === "en fila";
+}
+
+function isUnassignedCutter(value) {
+  return ["", "pendiente", "sin asignar", "sin registro"].includes(normalize(value).trim());
 }
 
 function productionValue(order) {
@@ -232,10 +246,203 @@ function orderRows(orders, emptyMessage) {
   }).join("");
 }
 
+function operationalStatus(order) {
+  if (isDelivered(order)) return "Entregados";
+  if (isQueuedForDelivery(order)) return "En fila";
+  if (isFinished(order)) return "Terminados";
+  return "Pendientes";
+}
+
+function formatGroupDate(value) {
+  if (!value) return "Sin fecha";
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  const label = new Intl.DateTimeFormat("es-MX", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function groupDescription(mode, key, groupOrders) {
+  if (mode === "date") return key ? `Pedidos registrados el ${groupOrders[0]?.date || key}` : "Pedidos sin fecha de registro";
+  if (mode === "movement") return key === "CR" ? "Pedidos que recoge el cliente" : "Pedidos programados para salida de producción";
+  return {
+    Pendientes: "Pedidos que todavía requieren proceso",
+    Terminados: "Corte terminado; pendiente de entrega",
+    "En fila": "Pedidos formados para su entrega",
+    Entregados: "Pedidos que ya concluyeron su recorrido",
+  }[key] || "Estado operativo del pedido";
+}
+
+function buildOrderGroups(mode, orders = state.dataset.orders) {
+  const grouped = new Map();
+  orders.forEach((order) => {
+    let key = orderDate(order);
+    if (mode === "status") key = operationalStatus(order);
+    if (mode === "movement") key = movementValue(order) || "SIN REGISTRO";
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(order);
+  });
+
+  const statusOrder = { Pendientes: 0, "En fila": 1, Terminados: 2, Entregados: 3 };
+  const movementOrder = { CR: 0, "Envío producción": 1, "SIN REGISTRO": 2 };
+  return [...grouped.entries()].map(([key, groupedOrders]) => ({
+    key,
+    label: mode === "date" ? formatGroupDate(key) : key,
+    description: groupDescription(mode, key, groupedOrders),
+    orders: groupedOrders,
+  })).sort((a, b) => {
+    if (mode === "date") return String(b.key).localeCompare(String(a.key));
+    if (mode === "status") return (statusOrder[a.key] ?? 99) - (statusOrder[b.key] ?? 99);
+    return (movementOrder[a.key] ?? 99) - (movementOrder[b.key] ?? 99) || a.label.localeCompare(b.label, "es-MX");
+  });
+}
+
+function orderDisclosure(order) {
+  const shipment = movementValue(order) === "Envío producción";
+  const finished = isFinished(order);
+  const delivered = isDelivered(order);
+  const status = operationalStatus(order);
+  const cutter = order.cutter || "SIN REGISTRO";
+  const receiver = order.receiver || "SIN REGISTRO";
+  const driver = order.driver || "SIN REGISTRO";
+  return `<details class="order-record">
+    <summary>
+      <span class="order-record-id"><small>Pedido</small><strong>#${escapeHtml(order.id)}</strong></span>
+      <span class="order-record-client"><strong>${escapeHtml(order.client)}</strong><small>${escapeHtml(order.date)} · ${escapeHtml(order.time)} h</small></span>
+      <span class="order-record-tags">
+        <span class="movement-pill ${shipment ? "shipment" : "pickup"}">${escapeHtml(movementValue(order))}</span>
+        <span class="order-stage-tag stage-${normalize(status).replace(/\s+/g, "-")}">${escapeHtml(status)}</span>
+      </span>
+      <span class="order-record-action"><b>Ver detalle</b><i aria-hidden="true">⌄</i></span>
+    </summary>
+    <div class="order-record-details">
+      <div><small>Cliente</small><strong>${escapeHtml(order.client)}</strong></div>
+      <div><small>Recibió</small><strong>${escapeHtml(receiver)}</strong></div>
+      <div><small>Movimiento</small><span class="movement-pill ${shipment ? "shipment" : "pickup"}">${escapeHtml(movementValue(order))}</span></div>
+      <div><small>Cortador responsable</small><strong>${escapeHtml(cutter)}</strong></div>
+      <div><small>Producción</small><span class="status ${finished ? "done" : "pending"}"><i></i>${productionValue(order)}</span></div>
+      <div><small>Entrega</small><span class="status ${delivered ? "delivered" : "waiting"}"><i></i>${escapeHtml(order.delivery || "SIN REGISTRO")}</span></div>
+      <div><small>Chofer</small><strong>${escapeHtml(driver)}</strong></div>
+      <div><small>Fecha y hora de registro</small><strong>${escapeHtml(order.date)} · ${escapeHtml(order.time)} h</strong></div>
+    </div>
+  </details>`;
+}
+
+function latestOrders(orders, limit = 5) {
+  return orders.map((order, index) => {
+    const timestamp = new Date(order.recordAt || "").getTime();
+    return { order, index, timestamp: Number.isNaN(timestamp) ? 0 : timestamp };
+  }).sort((a, b) => b.timestamp - a.timestamp || a.index - b.index).slice(0, limit).map((item) => item.order);
+}
+
+function stageClass(order) {
+  return normalize(operationalStatus(order)).replace(/\s+/g, "-");
+}
+
+function notificationItem(order, index) {
+  const selected = String(order.id) === state.activeNotificationId;
+  const shipment = movementValue(order) === "Envío producción";
+  return `<button class="recent-notification-item ${selected ? "selected" : ""}" type="button" data-notification-id="${escapeHtml(order.id)}" aria-pressed="${selected}">
+    <span class="notification-sequence">${String(index + 1).padStart(2, "0")}</span>
+    <span class="notification-order-copy">
+      <small>Pedido #${escapeHtml(order.id)} · ${escapeHtml(order.date)} · ${escapeHtml(order.time)} h</small>
+      <strong>${escapeHtml(order.client)}</strong>
+      <span>${escapeHtml(order.cutter || "Cortador pendiente")}</span>
+    </span>
+    <span class="notification-tags">
+      <span class="movement-pill ${shipment ? "shipment" : "pickup"}">${escapeHtml(movementValue(order))}</span>
+      <span class="order-stage-tag stage-${stageClass(order)}">${escapeHtml(operationalStatus(order))}</span>
+    </span>
+    <span class="notification-arrow" aria-hidden="true">→</span>
+  </button>`;
+}
+
+function assistantCounts(orders) {
+  const count = (label) => orders.filter((order) => operationalStatus(order) === label).length;
+  return {
+    total: orders.length,
+    pending: count("Pendientes"),
+    queued: count("En fila"),
+    finished: count("Terminados"),
+    delivered: count("Entregados"),
+  };
+}
+
+function assistantMetric(label, value, tone) {
+  return `<div class="assistant-metric ${tone}"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`;
+}
+
+function orderReportLine(order, index) {
+  return `<li>
+    <span>${index + 1}</span>
+    <div>
+      <strong>Pedido #${escapeHtml(order.id)} · ${escapeHtml(order.client)}</strong>
+      <p>Movimiento: ${escapeHtml(movementValue(order))}. Cortador: ${escapeHtml(order.cutter || "SIN REGISTRO")}. Producción: ${escapeHtml(productionValue(order))}. Entrega: ${escapeHtml(order.delivery || "SIN REGISTRO")}. Registro: ${escapeHtml(order.date)} a las ${escapeHtml(order.time)} h.</p>
+    </div>
+  </li>`;
+}
+
+function renderAssistant(recent) {
+  const orders = state.dataset.orders;
+  const selected = orders.find((order) => String(order.id) === state.activeNotificationId);
+  const listenLabel = $("#listenAssistantBtn span:last-child");
+  if (selected) {
+    $("#assistantContext").textContent = "DETALLE DE NOTIFICACIÓN";
+    $("#assistantHeadline").textContent = `Pedido #${selected.id}`;
+    $("#assistantMetrics").innerHTML = [
+      assistantMetric("Movimiento", movementValue(selected), "blue"),
+      assistantMetric("Cortador", selected.cutter || "SIN REGISTRO", "gold"),
+      assistantMetric("Producción", productionValue(selected), "red"),
+      assistantMetric("Entrega", selected.delivery || "SIN REGISTRO", "green"),
+    ].join("");
+    $("#assistantMessage").innerHTML = `<div class="assistant-selected-report">
+      <p class="assistant-greeting">Notificación completa</p>
+      <h4>${escapeHtml(selected.client)}</h4>
+      <p>El pedido <strong>#${escapeHtml(selected.id)}</strong> fue recibido por <strong>${escapeHtml(selected.receiver || "SIN REGISTRO")}</strong>. Su movimiento es <strong>${escapeHtml(movementValue(selected))}</strong> y el cortador responsable es <strong>${escapeHtml(selected.cutter || "SIN REGISTRO")}</strong>.</p>
+      <p>Producción: <strong>${escapeHtml(productionValue(selected))}</strong>. Entrega: <strong>${escapeHtml(selected.delivery || "SIN REGISTRO")}</strong>. Chofer: <strong>${escapeHtml(selected.driver || "SIN REGISTRO")}</strong>.</p>
+      <p class="assistant-record-time">Registrado el ${escapeHtml(selected.date)} a las ${escapeHtml(selected.time)} h.</p>
+    </div>`;
+    $("#assistantSummaryBtn").hidden = false;
+    if (listenLabel) listenLabel.textContent = "Escuchar detalle";
+    return;
+  }
+
+  state.activeNotificationId = "";
+  const counts = assistantCounts(orders);
+  $("#assistantContext").textContent = "RESUMEN GENERAL";
+  $("#assistantHeadline").textContent = orders.length ? `${orders.length} pedidos bajo seguimiento` : "Sin pedidos registrados";
+  $("#assistantMetrics").innerHTML = [
+    assistantMetric("Total", counts.total, "blue"),
+    assistantMetric("Pendientes", counts.pending, "red"),
+    assistantMetric("En fila", counts.queued, "gold"),
+    assistantMetric("Entregados", counts.delivered, "green"),
+  ].join("");
+  $("#assistantMessage").innerHTML = recent.length ? `<div class="assistant-complete-report">
+    <p class="assistant-greeting">Reporte completo de actividad reciente</p>
+    <p>Tienes <strong>${counts.pending} pendientes</strong>, <strong>${counts.queued} en fila</strong>, <strong>${counts.finished} terminados</strong> y <strong>${counts.delivered} entregados</strong>. Estos son los cinco ingresos más recientes:</p>
+    <ol class="assistant-report-list">${recent.map(orderReportLine).join("")}</ol>
+  </div>` : `<p>No hay notificaciones de pedidos por el momento.</p>`;
+  $("#assistantSummaryBtn").hidden = true;
+  if (listenLabel) listenLabel.textContent = "Escuchar las 5 notificaciones";
+}
+
 function renderOrdersModule() {
   const orders = state.dataset.orders;
-  $("#ordersCountLabel").textContent = `${orders.length} ${orders.length === 1 ? "pedido" : "pedidos"}`;
-  $("#ordersBody").innerHTML = orderRows(orders, "No hay pedidos registrados.");
+  const recent = latestOrders(orders);
+  if (!orders.some((order) => String(order.id) === state.activeNotificationId)) state.activeNotificationId = "";
+  $("#recentNotificationsCount").textContent = `${recent.length} ${recent.length === 1 ? "reciente" : "recientes"}`;
+  $("#recentNotifications").innerHTML = recent.length
+    ? recent.map(notificationItem).join("")
+    : `<p class="empty-state">No hay pedidos recientes.</p>`;
+  renderAssistant(recent);
+
+  const speechAvailable = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+  $("#listenAssistantBtn").disabled = !speechAvailable || !recent.length;
+  if (!speechAvailable) $("#assistantSpeechStatus").textContent = "La lectura en voz alta no está disponible en este navegador.";
 }
 
 function renderSearchModule() {
@@ -307,11 +514,11 @@ function pieBackground(items) {
 }
 
 function cutterChartStats(orders) {
-  return unique(orders.map((order) => order.cutter)).map((name, index) => {
+  return unique(orders.map((order) => order.cutter)).filter((name) => !isUnassignedCutter(name)).map((name, index) => {
     const assignedOrders = orders.filter((order) => order.cutter === name);
     const delivered = assignedOrders.filter(isDelivered).length;
-    const pending = assignedOrders.filter((order) => !isDelivered(order) && !isFinished(order)).length;
-    const queued = Math.max(assignedOrders.length - delivered - pending, 0);
+    const queued = assignedOrders.filter(isQueuedForDelivery).length;
+    const pending = Math.max(assignedOrders.length - delivered - queued, 0);
     return {
       name,
       total: assignedOrders.length,
@@ -327,10 +534,15 @@ function renderChartsModule() {
   const orders = state.dataset.orders;
   const total = orders.length;
   const cutterStats = cutterChartStats(orders);
+  const unassigned = orders.filter((order) => isUnassignedCutter(order.cutter)).length;
+  const cutterSlices = [
+    ...cutterStats,
+    ...(unassigned ? [{ name: "SIN ASIGNAR", total: unassigned, color: "#88756a", unassigned: true }] : []),
+  ];
   const leader = cutterStats[0];
   const delivered = orders.filter(isDelivered).length;
-  const pending = orders.filter((order) => !isDelivered(order) && !isFinished(order)).length;
-  const queued = Math.max(total - delivered - pending, 0);
+  const queued = orders.filter(isQueuedForDelivery).length;
+  const pending = Math.max(total - delivered - queued, 0);
   const deliveredRate = total ? Math.round((delivered / total) * 100) : 0;
 
   $("#chartLeaderName").textContent = leader ? leader.name : "Sin datos";
@@ -343,15 +555,16 @@ function renderChartsModule() {
 
   $("#cutterPieTotal").textContent = total;
   $("#cutterPieCount").textContent = `${total} ${total === 1 ? "pedido" : "pedidos"}`;
-  $("#cutterPie").style.background = pieBackground(cutterStats.map((stat) => ({ value: stat.total, color: stat.color })));
-  $("#cutterPie").setAttribute("aria-label", cutterStats.length
-    ? cutterStats.map((stat) => `${stat.name}: ${stat.total} pedidos`).join(", ")
+  $("#cutterPie").style.background = pieBackground(cutterSlices.map((stat) => ({ value: stat.total, color: stat.color })));
+  $("#cutterPie").setAttribute("aria-label", cutterSlices.length
+    ? cutterSlices.map((stat) => `${stat.name}: ${stat.total} pedidos`).join(", ")
     : "Sin pedidos por cortador");
-  $("#cutterPieLegend").innerHTML = cutterStats.length ? cutterStats.map((stat, index) => {
+  $("#cutterPieLegend").innerHTML = cutterSlices.length ? cutterSlices.map((stat, index) => {
     const share = total ? Math.round((stat.total / total) * 100) : 0;
-    return `<div class="pie-legend-row ${index === 0 ? "leader" : ""}">
+    const isLeader = !stat.unassigned && index === 0;
+    return `<div class="pie-legend-row ${isLeader ? "leader" : ""}">
       <i style="background:${stat.color}"></i>
-      <p><strong>${escapeHtml(stat.name)}${index === 0 ? "<em>Más pedidos</em>" : ""}</strong><small>${stat.total} ${stat.total === 1 ? "pedido" : "pedidos"}</small></p>
+      <p><strong>${escapeHtml(stat.name)}${isLeader ? "<em>Más pedidos</em>" : ""}</strong><small>${stat.total} ${stat.total === 1 ? "pedido" : "pedidos"}</small></p>
       <b>${share}%</b>
     </div>`;
   }).join("") : `<p class="chart-empty">No hay datos para mostrar.</p>`;
@@ -385,6 +598,276 @@ function renderChartsModule() {
         <span><i class="stage-delivered"></i><b>${stat.delivered}</b><small>Entregados</small></span>
       </div>
     </article>`).join("") : `<p class="chart-empty">No hay cortadores registrados.</p>`;
+}
+
+function spokenOrderReport(order, index) {
+  const prefix = Number.isInteger(index) ? `Notificación ${index + 1}. ` : "";
+  return `${prefix}Pedido ${order.id}, cliente ${order.client}. Movimiento ${movementValue(order)}. Cortador ${order.cutter || "sin registro"}. Producción ${productionValue(order)}. Entrega ${order.delivery || "sin registro"}. Registrado el ${order.date} a las ${order.time}.`;
+}
+
+function assistantNarration() {
+  const orders = state.dataset.orders;
+  const recent = latestOrders(orders);
+  const selected = orders.find((order) => String(order.id) === state.activeNotificationId);
+  if (selected) {
+    return `Hola, soy Tony. ${spokenOrderReport(selected)} Recibió ${selected.receiver || "sin registro"}. Chofer ${selected.driver || "sin registro"}.`;
+  }
+  if (!recent.length) return "No hay notificaciones de pedidos por el momento.";
+  const counts = assistantCounts(orders);
+  const intro = `Hola, soy Tony. Este es tu reporte completo. Hay ${counts.total} pedidos bajo seguimiento: ${counts.pending} pendientes, ${counts.queued} en fila, ${counts.finished} terminados y ${counts.delivered} entregados. Los cinco ingresos más recientes son los siguientes.`;
+  return `${intro} ${recent.map(spokenOrderReport).join(" ")}`;
+}
+
+function setAssistantSpeaking(active, message) {
+  $(".virtual-assistant-panel")?.classList.toggle("speaking", active);
+  $("#listenAssistantBtn").disabled = active || !latestOrders(state.dataset.orders).length;
+  $("#stopAssistantBtn").hidden = !active;
+  $("#assistantSpeechStatus").textContent = message;
+}
+
+function stopAssistantSpeech(message = "Tony detuvo la lectura. Puedes seleccionar otra notificación.") {
+  assistantUtterance = null;
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  setAssistantSpeaking(false, message);
+  queueTonyRecognition();
+}
+
+function speakTonyText(text) {
+  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+    $("#assistantSpeechStatus").textContent = "La lectura en voz alta no está disponible en este navegador.";
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "es-MX";
+  utterance.rate = 0.97;
+  utterance.pitch = 1.08;
+  utterance.volume = 0.44;
+  const spanishVoice = window.speechSynthesis.getVoices().find((voice) => normalize(voice.lang).startsWith("es-mx"))
+    || window.speechSynthesis.getVoices().find((voice) => normalize(voice.lang).startsWith("es"));
+  if (spanishVoice) utterance.voice = spanishVoice;
+  assistantUtterance = utterance;
+  if (tonyRecognitionRunning && tonyRecognition) tonyRecognition.abort();
+  utterance.onstart = () => {
+    if (assistantUtterance === utterance) setAssistantSpeaking(true, "Tony está leyendo las notificaciones…");
+  };
+  utterance.onend = () => {
+    if (assistantUtterance !== utterance) return;
+    assistantUtterance = null;
+    setAssistantSpeaking(false, "Tony terminó la lectura. Puedes seleccionar un pedido para escuchar su detalle.");
+    queueTonyRecognition();
+  };
+  utterance.onerror = () => {
+    if (assistantUtterance !== utterance) return;
+    assistantUtterance = null;
+    setAssistantSpeaking(false, "No fue posible completar la lectura. Inténtalo nuevamente.");
+    queueTonyRecognition();
+  };
+  window.speechSynthesis.speak(utterance);
+}
+
+function speakAssistant() {
+  speakTonyText(assistantNarration());
+}
+
+function normalizeVoiceText(value) {
+  return normalize(value).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function voiceRequest(transcript) {
+  const text = normalizeVoiceText(transcript);
+  const wake = text.match(/\b(?:oye|hey)?\s*ton[yi]\b/);
+  if (!wake) return null;
+  return text.slice((wake.index || 0) + wake[0].length).trim();
+}
+
+function orderedOrders() {
+  return latestOrders(state.dataset.orders, state.dataset.orders.length);
+}
+
+function findTonyOrder(command) {
+  const orders = orderedOrders();
+  const number = command.match(/\b\d{3,}\b/)?.[0];
+  if (number) {
+    const exact = orders.find((order) => String(order.id) === number);
+    if (exact) return { order: exact, matches: 1, query: number };
+    const partial = orders.filter((order) => String(order.id).includes(number));
+    if (partial.length) return { order: partial[0], matches: partial.length, query: number };
+  }
+
+  const directMatches = orders.filter((order) => {
+    const client = normalizeVoiceText(order.client);
+    return client.length > 2 && command.includes(client);
+  });
+  if (directMatches.length) return { order: directMatches[0], matches: directMatches.length, query: directMatches[0].client };
+
+  const stopWords = new Set([
+    "dime", "informacion", "sobre", "pedido", "pedidos", "numero", "nombre", "cliente", "del", "de", "la", "el", "los", "las",
+    "por", "un", "una", "favor", "quiero", "saber", "datos", "dame", "busca", "buscar", "encuentra", "muestrame", "cuentame",
+  ]);
+  const queryTokens = command.split(" ").filter((token) => token.length > 2 && !stopWords.has(token));
+  if (!queryTokens.length) return null;
+
+  const candidates = orders.map((order) => {
+    const clientTokens = new Set(normalizeVoiceText(order.client).split(" ").filter((token) => token.length > 2));
+    const score = queryTokens.reduce((total, token) => total + (clientTokens.has(token) ? 2 : [...clientTokens].some((clientToken) => clientToken.startsWith(token) || token.startsWith(clientToken)) ? 1 : 0), 0);
+    return { order, score };
+  }).filter((candidate) => candidate.score > 0).sort((a, b) => b.score - a.score);
+  if (!candidates.length) return null;
+  const topScore = candidates[0].score;
+  const best = candidates.filter((candidate) => candidate.score === topScore);
+  return { order: best[0].order, matches: best.length, query: queryTokens.join(" ") };
+}
+
+function showTonyTranscript(label, text) {
+  const node = $("#tonyTranscript");
+  node.hidden = false;
+  node.textContent = `${label}: ${text}`;
+}
+
+function tonyStatusAnswer(command) {
+  const counts = assistantCounts(state.dataset.orders);
+  if (!/\b(cuantos|cuantas|cuanto|estado)\b/.test(command)) return null;
+  if (command.includes("pendiente")) return `Hay ${counts.pending} pedidos pendientes.`;
+  if (command.includes("fila")) return `Hay ${counts.queued} pedidos en fila.`;
+  if (command.includes("terminado")) return `Hay ${counts.finished} pedidos terminados.`;
+  if (command.includes("entregado")) return `Hay ${counts.delivered} pedidos entregados.`;
+  return `Hay ${counts.total} pedidos en total: ${counts.pending} pendientes, ${counts.queued} en fila, ${counts.finished} terminados y ${counts.delivered} entregados.`;
+}
+
+function handleTonyCommand(transcript) {
+  const command = voiceRequest(transcript);
+  if (command === null) {
+    $("#tonyCommandStatus").textContent = "Esperando “Oye Tony”";
+    showTonyTranscript("Escuché", transcript);
+    return;
+  }
+  showTonyTranscript("Comando", transcript);
+
+  if (!command || /\b(ayuda|puedes hacer|comandos)\b/.test(command)) {
+    speakTonyText("Hola. Puedes pedirme información de un pedido por número o por nombre del cliente. También puedes preguntarme cuántos pedidos están pendientes, en fila, terminados o entregados.");
+    return;
+  }
+
+  if (/\b(resumen|notificaciones|ultimos|recientes)\b/.test(command) && !/\bpedido\s+\d/.test(command)) {
+    state.activeNotificationId = "";
+    renderOrdersModule();
+    speakTonyText(assistantNarration());
+    return;
+  }
+
+  if (/quien.*mas pedidos|mayor carga/.test(command)) {
+    const leader = cutterChartStats(state.dataset.orders)[0];
+    speakTonyText(leader
+      ? `El cortador con más pedidos es ${leader.name}, con ${leader.total} pedidos asignados.`
+      : "No tengo pedidos asignados a cortadores en este momento.");
+    return;
+  }
+
+  const statusAnswer = tonyStatusAnswer(command);
+  if (statusAnswer) {
+    speakTonyText(statusAnswer);
+    return;
+  }
+
+  const result = findTonyOrder(command);
+  if (!result) {
+    speakTonyText("No encontré un pedido con ese número o nombre. Intenta decir el número completo o un nombre más específico del cliente.");
+    return;
+  }
+
+  state.activeNotificationId = String(result.order.id);
+  renderOrdersModule();
+  const coincidence = result.matches > 1 ? `Encontré ${result.matches} coincidencias y te mostraré la más reciente. ` : "";
+  speakTonyText(`${coincidence}${assistantNarration()}`);
+}
+
+function updateTonyVoiceUi(message) {
+  const button = $("#voiceCommandBtn");
+  button.classList.toggle("active", tonyVoiceEnabled);
+  button.setAttribute("aria-pressed", String(tonyVoiceEnabled));
+  button.querySelector("strong").textContent = tonyVoiceEnabled ? "Desactivar “Oye Tony”" : "Activar “Oye Tony”";
+  button.querySelector("small").textContent = tonyVoiceEnabled ? "Tony está atento a tu voz" : "Toca una vez para conversar";
+  $(".virtual-assistant-panel")?.classList.toggle("listening", tonyRecognitionRunning);
+  $("#tonyCommandStatus").textContent = message || (tonyVoiceEnabled ? "Escuchando…" : "Desactivado");
+}
+
+function queueTonyRecognition(delay = 550) {
+  clearTimeout(tonyRestartTimer);
+  if (!tonyVoiceEnabled || assistantUtterance || document.hidden || !tonyRecognition) return;
+  tonyRestartTimer = setTimeout(() => startTonyRecognition(), delay);
+}
+
+function startTonyRecognition() {
+  if (!tonyVoiceEnabled || tonyRecognitionRunning || assistantUtterance || !tonyRecognition || document.hidden) return;
+  try {
+    tonyRecognition.start();
+  } catch (error) {
+    if (error.name !== "InvalidStateError") updateTonyVoiceUi("No fue posible activar el micrófono");
+  }
+}
+
+function disableTonyVoice(message = "Desactivado") {
+  tonyVoiceEnabled = false;
+  clearTimeout(tonyRestartTimer);
+  if (tonyRecognitionRunning && tonyRecognition) tonyRecognition.abort();
+  tonyRecognitionRunning = false;
+  updateTonyVoiceUi(message);
+}
+
+function initializeTonyVoice() {
+  const VoiceRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const button = $("#voiceCommandBtn");
+  if (!VoiceRecognition || !window.isSecureContext) {
+    button.disabled = true;
+    updateTonyVoiceUi(window.isSecureContext ? "No disponible en este navegador" : "Requiere una conexión segura");
+    return;
+  }
+
+  tonyRecognition = new VoiceRecognition();
+  tonyRecognition.lang = "es-MX";
+  tonyRecognition.continuous = true;
+  tonyRecognition.interimResults = true;
+  tonyRecognition.maxAlternatives = 1;
+  tonyRecognition.onstart = () => {
+    tonyRecognitionRunning = true;
+    updateTonyVoiceUi("Escuchando “Oye Tony”…");
+  };
+  tonyRecognition.onresult = (event) => {
+    let interim = "";
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      const transcript = event.results[index][0].transcript.trim();
+      if (event.results[index].isFinal) handleTonyCommand(transcript);
+      else interim += `${transcript} `;
+    }
+    if (interim.trim()) showTonyTranscript("Escuchando", interim.trim());
+  };
+  tonyRecognition.onerror = (event) => {
+    if (["not-allowed", "service-not-allowed"].includes(event.error)) {
+      disableTonyVoice("Permiso de micrófono denegado");
+      return;
+    }
+    if (["audio-capture", "network"].includes(event.error)) {
+      disableTonyVoice(event.error === "audio-capture" ? "No se encontró un micrófono" : "Reconocimiento de voz sin conexión");
+      return;
+    }
+    if (!['aborted', 'no-speech'].includes(event.error)) updateTonyVoiceUi("No pude entenderte; inténtalo otra vez");
+  };
+  tonyRecognition.onend = () => {
+    tonyRecognitionRunning = false;
+    updateTonyVoiceUi(tonyVoiceEnabled ? "Preparando el micrófono…" : "Desactivado");
+    queueTonyRecognition();
+  };
+
+  button.addEventListener("click", () => {
+    if (tonyVoiceEnabled) {
+      disableTonyVoice();
+      return;
+    }
+    tonyVoiceEnabled = true;
+    updateTonyVoiceUi("Solicitando acceso al micrófono…");
+    startTonyRecognition();
+  });
 }
 
 function renderAll() {
@@ -535,6 +1018,23 @@ $$('.advanced-status-grid button').forEach((button) => button.addEventListener("
   renderSearchModule();
 }));
 
+$("#recentNotifications").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-notification-id]");
+  if (!button) return;
+  stopAssistantSpeech("Tony tiene listo el detalle completo de esta notificación.");
+  state.activeNotificationId = button.dataset.notificationId;
+  renderOrdersModule();
+});
+
+$("#assistantSummaryBtn").addEventListener("click", () => {
+  stopAssistantSpeech("Tony tiene listo el resumen general.");
+  state.activeNotificationId = "";
+  renderOrdersModule();
+});
+
+$("#listenAssistantBtn").addEventListener("click", speakAssistant);
+$("#stopAssistantBtn").addEventListener("click", () => stopAssistantSpeech());
+
 $("#cutterGrid").addEventListener("click", (event) => {
   const button = event.target.closest(".view-cutter-orders");
   if (!button) return;
@@ -562,6 +1062,14 @@ window.addEventListener("online", () => {
   loadData({ quiet: true });
 });
 window.addEventListener("offline", updateConnectionStatus);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (tonyRecognitionRunning && tonyRecognition) tonyRecognition.abort();
+  } else {
+    queueTonyRecognition(250);
+  }
+});
+window.addEventListener("pagehide", () => disableTonyVoice());
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {
@@ -573,6 +1081,7 @@ if (window.matchMedia("(display-mode: standalone)").matches || window.navigator.
   $("#installBtn").hidden = true;
 }
 
+initializeTonyVoice();
 applyTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 setModule(initialModule(), { updateUrl: false });
 updateConnectionStatus();
