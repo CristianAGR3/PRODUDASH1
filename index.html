@@ -20,7 +20,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="icon-192.png">
     <script>try{document.documentElement.dataset.theme=localStorage.getItem("produ-theme")||"light"}catch(e){}</script>
-    <link rel="stylesheet" href="styles.css?v=20260821-organic-flames">
+    <link rel="stylesheet" href="styles.css?v=20260902-cutter-charts">
   </head>
   <body>
     <div class="app-shell">
@@ -39,6 +39,9 @@
           </button>
           <button id="nav-cutters" class="nav-item" type="button" role="tab" aria-selected="false" aria-controls="module-cutters" data-module="cutters">
             <span class="nav-icon" aria-hidden="true">◉</span><span class="nav-label">Cortadores</span>
+          </button>
+          <button id="nav-charts" class="nav-item" type="button" role="tab" aria-selected="false" aria-controls="module-charts" data-module="charts">
+            <span class="nav-icon" aria-hidden="true">◔</span><span class="nav-label">Gráficas</span>
           </button>
         </nav>
 
@@ -171,6 +174,48 @@
           </section>
         </section>
 
+        <section id="module-charts" class="module-section" role="tabpanel" aria-labelledby="nav-charts" data-module-panel="charts" hidden>
+          <section class="chart-summary-grid" aria-label="Resumen de cortadores">
+            <article class="chart-summary-card leader-card">
+              <span class="chart-summary-icon" aria-hidden="true">★</span>
+              <div><small>Mayor carga de pedidos</small><strong id="chartLeaderName">Sin datos</strong><span id="chartLeaderCopy">0 pedidos</span></div>
+            </article>
+            <article class="chart-summary-card">
+              <span class="chart-summary-icon blue" aria-hidden="true">◉</span>
+              <div><small>Cortadores activos</small><strong id="chartActiveCutters">0</strong><span>con pedidos asignados</span></div>
+            </article>
+            <article class="chart-summary-card">
+              <span class="chart-summary-icon green" aria-hidden="true">✓</span>
+              <div><small>Pedidos entregados</small><strong id="chartDeliveredTotal">0</strong><span id="chartDeliveredCopy">0% del total</span></div>
+            </article>
+          </section>
+
+          <section class="chart-panels-grid">
+            <article class="panel chart-panel">
+              <div class="panel-heading"><div><p class="eyebrow">CARGA DE TRABAJO</p><h2>Pedidos por cortador</h2></div><span id="cutterPieCount" class="results-badge">0 pedidos</span></div>
+              <p class="chart-description">La proporción de cada color muestra quién concentra más pedidos asignados.</p>
+              <div class="pie-chart-layout">
+                <div id="cutterPie" class="pie-chart" role="img" aria-label="Pedidos por cortador"><div><strong id="cutterPieTotal">0</strong><span>asignados</span></div></div>
+                <div id="cutterPieLegend" class="pie-legend"><p class="chart-empty">No hay datos para mostrar.</p></div>
+              </div>
+            </article>
+
+            <article class="panel chart-panel">
+              <div class="panel-heading"><div><p class="eyebrow">ESTADO OPERATIVO</p><h2>Pendientes, en fila y entregados</h2></div><span id="deliveryPieRate" class="rate-badge">0%</span></div>
+              <p class="chart-description">“En fila” son pedidos con el corte terminado que todavía esperan entrega.</p>
+              <div class="pie-chart-layout">
+                <div id="deliveryPie" class="pie-chart" role="img" aria-label="Estado de pedidos"><div><strong id="deliveryPieTotal">0</strong><span>pedidos</span></div></div>
+                <div id="deliveryPieLegend" class="pie-legend"><p class="chart-empty">No hay datos para mostrar.</p></div>
+              </div>
+            </article>
+          </section>
+
+          <section class="panel chart-detail-panel">
+            <div class="module-section-heading"><div><p class="eyebrow">DETALLE</p><h2>Estado por cortador</h2></div><p>Comparación de pendientes, en fila y entregados por responsable.</p></div>
+            <div id="chartCutterGrid" class="chart-cutter-grid"></div>
+          </section>
+        </section>
+
         <footer>
           <span>Dashboard de producción · PWA</span>
           <span id="connectionStatus" class="connection-status">Comprobando conexión…</span>
@@ -178,6 +223,6 @@
         </footer>
       </main>
     </div>
-    <script src="app.js?v=20260805-pwa-modules"></script>
+    <script src="app.js?v=20260902-cutter-charts"></script>
   </body>
 </html>

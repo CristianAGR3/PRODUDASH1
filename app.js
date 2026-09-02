@@ -17,7 +17,14 @@ const MODULES = {
     title: "Cortadores",
     subtitle: "Avance, carga de trabajo y pedidos terminados por responsable.",
   },
+  charts: {
+    eyebrow: "ANÁLISIS",
+    title: "Gráficas de cortadores",
+    subtitle: "Distribución de pedidos y estado operativo por responsable.",
+  },
 };
+
+const CHART_COLORS = ["#3f7f63", "#b78336", "#8f3630", "#557aa4", "#80629d", "#4f9698", "#bc6d45", "#728048"];
 
 const state = {
   dataset: { meta: {}, orders: [] },
@@ -93,6 +100,10 @@ function movementValue(order) {
 
 function isFinished(order) {
   return normalize(order.production) === "terminado";
+}
+
+function isDelivered(order) {
+  return normalize(order.delivery) === "entregado";
 }
 
 function productionValue(order) {
@@ -282,6 +293,100 @@ function renderCutterModule() {
     </article>`).join("") : `<div class="empty-state">No hay cortadores registrados.</div>`;
 }
 
+function pieBackground(items) {
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  if (!total) return "conic-gradient(#d8ded8 0 100%)";
+  let cursor = 0;
+  const segments = items.map((item) => {
+    const start = (cursor / total) * 100;
+    cursor += item.value;
+    const end = (cursor / total) * 100;
+    return `${item.color} ${start}% ${end}%`;
+  });
+  return `conic-gradient(${segments.join(", ")})`;
+}
+
+function cutterChartStats(orders) {
+  return unique(orders.map((order) => order.cutter)).map((name, index) => {
+    const assignedOrders = orders.filter((order) => order.cutter === name);
+    const delivered = assignedOrders.filter(isDelivered).length;
+    const pending = assignedOrders.filter((order) => !isDelivered(order) && !isFinished(order)).length;
+    const queued = Math.max(assignedOrders.length - delivered - pending, 0);
+    return {
+      name,
+      total: assignedOrders.length,
+      pending,
+      queued,
+      delivered,
+      color: CHART_COLORS[index % CHART_COLORS.length],
+    };
+  }).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "es-MX"));
+}
+
+function renderChartsModule() {
+  const orders = state.dataset.orders;
+  const total = orders.length;
+  const cutterStats = cutterChartStats(orders);
+  const leader = cutterStats[0];
+  const delivered = orders.filter(isDelivered).length;
+  const pending = orders.filter((order) => !isDelivered(order) && !isFinished(order)).length;
+  const queued = Math.max(total - delivered - pending, 0);
+  const deliveredRate = total ? Math.round((delivered / total) * 100) : 0;
+
+  $("#chartLeaderName").textContent = leader ? leader.name : "Sin datos";
+  $("#chartLeaderCopy").textContent = leader
+    ? `${leader.total} ${leader.total === 1 ? "pedido" : "pedidos"} · ${Math.round((leader.total / total) * 100)}% del total`
+    : "0 pedidos";
+  $("#chartActiveCutters").textContent = cutterStats.length;
+  $("#chartDeliveredTotal").textContent = delivered;
+  $("#chartDeliveredCopy").textContent = `${deliveredRate}% del total`;
+
+  $("#cutterPieTotal").textContent = total;
+  $("#cutterPieCount").textContent = `${total} ${total === 1 ? "pedido" : "pedidos"}`;
+  $("#cutterPie").style.background = pieBackground(cutterStats.map((stat) => ({ value: stat.total, color: stat.color })));
+  $("#cutterPie").setAttribute("aria-label", cutterStats.length
+    ? cutterStats.map((stat) => `${stat.name}: ${stat.total} pedidos`).join(", ")
+    : "Sin pedidos por cortador");
+  $("#cutterPieLegend").innerHTML = cutterStats.length ? cutterStats.map((stat, index) => {
+    const share = total ? Math.round((stat.total / total) * 100) : 0;
+    return `<div class="pie-legend-row ${index === 0 ? "leader" : ""}">
+      <i style="background:${stat.color}"></i>
+      <p><strong>${escapeHtml(stat.name)}${index === 0 ? "<em>Más pedidos</em>" : ""}</strong><small>${stat.total} ${stat.total === 1 ? "pedido" : "pedidos"}</small></p>
+      <b>${share}%</b>
+    </div>`;
+  }).join("") : `<p class="chart-empty">No hay datos para mostrar.</p>`;
+
+  const statusStats = [
+    { label: "Pendientes", description: "Corte aún en proceso", value: pending, color: "#a83d36" },
+    { label: "En fila", description: "Terminados; esperan entrega", value: queued, color: "#c18a35" },
+    { label: "Entregados", description: "Pedidos completados", value: delivered, color: "#4d8d62" },
+  ];
+  $("#deliveryPieTotal").textContent = total;
+  $("#deliveryPieRate").textContent = `${deliveredRate}%`;
+  $("#deliveryPie").style.background = pieBackground(statusStats);
+  $("#deliveryPie").setAttribute("aria-label", statusStats.map((stat) => `${stat.label}: ${stat.value} pedidos`).join(", "));
+  $("#deliveryPieLegend").innerHTML = statusStats.map((stat) => `
+    <div class="pie-legend-row">
+      <i style="background:${stat.color}"></i>
+      <p><strong>${stat.label}</strong><small>${stat.description}</small></p>
+      <b>${stat.value}</b>
+    </div>`).join("");
+
+  $("#chartCutterGrid").innerHTML = cutterStats.length ? cutterStats.map((stat, index) => `
+    <article class="chart-cutter-card">
+      <div class="chart-cutter-head">
+        <span class="chart-avatar" style="background:${stat.color}22;color:${stat.color}">${escapeHtml(stat.name.charAt(0) || "?")}</span>
+        <div><strong>${escapeHtml(stat.name)}</strong><small>${index === 0 ? "Mayor número de pedidos" : `${Math.round((stat.total / total) * 100)}% de la carga`}</small></div>
+        <b>${stat.total}</b>
+      </div>
+      <div class="chart-stage-grid">
+        <span><i class="stage-pending"></i><b>${stat.pending}</b><small>Pendientes</small></span>
+        <span><i class="stage-queued"></i><b>${stat.queued}</b><small>En fila</small></span>
+        <span><i class="stage-delivered"></i><b>${stat.delivered}</b><small>Entregados</small></span>
+      </div>
+    </article>`).join("") : `<p class="chart-empty">No hay cortadores registrados.</p>`;
+}
+
 function renderAll() {
   const values = metrics(state.dataset.orders);
   renderHeader();
@@ -290,6 +395,7 @@ function renderAll() {
   renderOrdersModule();
   renderSearchModule();
   renderCutterModule();
+  renderChartsModule();
 }
 
 function syncControls() {
