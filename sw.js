@@ -1,4 +1,4 @@
-const CACHE_NAME = "produ-pwa-20260902-v11-tony-voice";
+const CACHE_NAME = "produ-pwa-20260903-v14-tony-float-only";
 const CACHE_PREFIX = "produ-pwa-";
 const APP_SHELL = [
   "./",
@@ -40,15 +40,6 @@ async function networkFirst(request, fallbackUrl) {
   }
 }
 
-async function cacheFirst(request) {
-  const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(request, { ignoreSearch: true });
-  if (cached) return cached;
-  const response = await fetch(request);
-  if (response.ok) cache.put(request, response.clone());
-  return response;
-}
-
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
@@ -63,7 +54,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(networkFirst(request, "./data/produccion.json"));
     return;
   }
-  event.respondWith(cacheFirst(request));
+  event.respondWith(networkFirst(request));
 });
 
 self.addEventListener("message", (event) => {

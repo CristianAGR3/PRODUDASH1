@@ -25,6 +25,7 @@ const MODULES = {
 };
 
 const CHART_COLORS = ["#3f7f63", "#b78336", "#8f3630", "#557aa4", "#80629d", "#4f9698", "#bc6d45", "#728048"];
+const DATA_REFRESH_INTERVAL = 30000;
 
 const state = {
   dataset: { meta: {}, orders: [] },
@@ -44,6 +45,12 @@ let tonyRecognition = null;
 let tonyVoiceEnabled = false;
 let tonyRecognitionRunning = false;
 let tonyRestartTimer = null;
+let tonyNudgeTimer = null;
+let tonyChatTurn = 0;
+let tonyDragged = false;
+let dataRefreshInFlight = null;
+let dataRefreshTimer = null;
+let serviceWorkerReloaded = false;
 
 function normalize(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -623,6 +630,12 @@ function setAssistantSpeaking(active, message) {
   $("#listenAssistantBtn").disabled = active || !latestOrders(state.dataset.orders).length;
   $("#stopAssistantBtn").hidden = !active;
   $("#assistantSpeechStatus").textContent = message;
+  setTonyCompanionMood(active ? "speaking" : (tonyRecognitionRunning ? "listening" : "idle"), message);
+}
+
+function setAssistantThinking(active) {
+  $(".virtual-assistant-panel")?.classList.toggle("thinking", active);
+  if (!assistantUtterance && !tonyRecognitionRunning) setTonyCompanionMood(active ? "thinking" : "idle", active ? "Estoy revisando los datos…" : "Listo para ayudarte");
 }
 
 function stopAssistantSpeech(message = "Tony detuvo la lectura. Puedes seleccionar otra notificación.") {
@@ -743,43 +756,7 @@ function handleTonyCommand(transcript) {
     return;
   }
   showTonyTranscript("Comando", transcript);
-
-  if (!command || /\b(ayuda|puedes hacer|comandos)\b/.test(command)) {
-    speakTonyText("Hola. Puedes pedirme información de un pedido por número o por nombre del cliente. También puedes preguntarme cuántos pedidos están pendientes, en fila, terminados o entregados.");
-    return;
-  }
-
-  if (/\b(resumen|notificaciones|ultimos|recientes)\b/.test(command) && !/\bpedido\s+\d/.test(command)) {
-    state.activeNotificationId = "";
-    renderOrdersModule();
-    speakTonyText(assistantNarration());
-    return;
-  }
-
-  if (/quien.*mas pedidos|mayor carga/.test(command)) {
-    const leader = cutterChartStats(state.dataset.orders)[0];
-    speakTonyText(leader
-      ? `El cortador con más pedidos es ${leader.name}, con ${leader.total} pedidos asignados.`
-      : "No tengo pedidos asignados a cortadores en este momento.");
-    return;
-  }
-
-  const statusAnswer = tonyStatusAnswer(command);
-  if (statusAnswer) {
-    speakTonyText(statusAnswer);
-    return;
-  }
-
-  const result = findTonyOrder(command);
-  if (!result) {
-    speakTonyText("No encontré un pedido con ese número o nombre. Intenta decir el número completo o un nombre más específico del cliente.");
-    return;
-  }
-
-  state.activeNotificationId = String(result.order.id);
-  renderOrdersModule();
-  const coincidence = result.matches > 1 ? `Encontré ${result.matches} coincidencias y te mostraré la más reciente. ` : "";
-  speakTonyText(`${coincidence}${assistantNarration()}`);
+  askTony(command, { speak: true });
 }
 
 function updateTonyVoiceUi(message) {
@@ -790,6 +767,9 @@ function updateTonyVoiceUi(message) {
   button.querySelector("small").textContent = tonyVoiceEnabled ? "Tony está atento a tu voz" : "Toca una vez para conversar";
   $(".virtual-assistant-panel")?.classList.toggle("listening", tonyRecognitionRunning);
   $("#tonyCommandStatus").textContent = message || (tonyVoiceEnabled ? "Escuchando…" : "Desactivado");
+  const companionVoice = $("#tonyVoiceToggle");
+  if (companionVoice) companionVoice.setAttribute("aria-pressed", String(tonyVoiceEnabled));
+  if (!assistantUtterance) setTonyCompanionMood(tonyRecognitionRunning ? "listening" : "idle", message || (tonyVoiceEnabled ? "Tony está atento a tu voz" : "Listo para ayudarte"));
 }
 
 function queueTonyRecognition(delay = 550) {
@@ -870,6 +850,261 @@ function initializeTonyVoice() {
   });
 }
 
+function setTonyCompanionMood(mood = "idle", status = "") {
+  const orbit = $("#tonyOrbit");
+  if (!orbit) return;
+  orbit.dataset.mood = mood;
+  const statusNode = $("#tonyCompanionStatus");
+  if (statusNode && status) statusNode.textContent = status;
+}
+
+function appendTonyChat(role, text, { thinking = false } = {}) {
+  const conversation = $("#tonyConversation");
+  if (!conversation) return null;
+  const message = document.createElement("div");
+  message.className = `tony-chat-message ${role}${thinking ? " thinking" : ""}`;
+  const bubble = document.createElement("span");
+  if (thinking) {
+    bubble.setAttribute("aria-label", text);
+    bubble.innerHTML = "<i></i><i></i><i></i>";
+  } else {
+    bubble.textContent = text;
+  }
+  message.append(bubble);
+  conversation.append(message);
+  conversation.scrollTop = conversation.scrollHeight;
+  return message;
+}
+
+function showTonyNudge(message, duration = 6500) {
+  const nudge = $("#tonyNudge");
+  const companion = $("#tonyCompanion");
+  if (!nudge || !message || (companion && !companion.hidden)) return;
+  window.clearTimeout(tonyNudgeTimer);
+  nudge.textContent = message;
+  nudge.hidden = false;
+  tonyNudgeTimer = window.setTimeout(() => { nudge.hidden = true; }, duration);
+}
+
+function latestTonySummary() {
+  const counts = assistantCounts(state.dataset.orders);
+  const latest = latestOrders(state.dataset.orders, 1)[0];
+  const lastOrder = latest ? ` El último es el pedido #${latest.id} de ${latest.client}.` : "";
+  return `Hay ${counts.total} pedidos: ${counts.pending} pendientes, ${counts.queued} en fila, ${counts.finished} terminados y ${counts.delivered} entregados.${lastOrder}`;
+}
+
+function tonyModuleFromCommand(command) {
+  if (!/\b(abre|abrir|muestra|mostrar|ve|ir|cambia|cambiar)\b/.test(command)) return null;
+  if (/\b(busqueda|buscador|buscar)\b/.test(command)) return "search";
+  if (/\b(cortador|cortadores)\b/.test(command)) return "cutters";
+  if (/\b(grafica|graficas|analisis)\b/.test(command)) return "charts";
+  if (/\b(pedido|pedidos|inicio|actividad)\b/.test(command)) return "orders";
+  return null;
+}
+
+function selectedOrderTonyAnswer(order, matches = 1) {
+  const matchCopy = matches > 1 ? ` Encontré ${matches} coincidencias y te muestro la más reciente.` : "";
+  return `Pedido #${order.id} de ${order.client}. Está ${operationalStatus(order).toLowerCase()}, con ${order.cutter || "cortador sin asignar"}. Movimiento: ${movementValue(order)}. Entrega: ${order.delivery || "sin registro"}.${matchCopy}`;
+}
+
+function resolveTonyPrompt(rawPrompt) {
+  const command = normalizeVoiceText(rawPrompt);
+  if (!command) return { reply: "Escríbeme el pedido, un estado o lo que quieras revisar." };
+
+  if (/\b(hola|buenos dias|buenas tardes|buenas noches)\b/.test(command) && command.split(" ").length < 5) {
+    return { reply: "Hola. Estoy conectado a los datos de producción. Puedes pedirme un pedido, un resumen o abrir cualquier módulo." };
+  }
+
+  if (/\b(ayuda|puedes hacer|que puedes hacer|comandos)\b/.test(command)) {
+    return { reply: "Puedo buscar por pedido o cliente, contar pendientes, en fila, terminados o entregados; decir quién tiene mayor carga; mostrar los últimos pedidos y abrir Pedidos, Buscador, Cortadores o Gráficas." };
+  }
+
+  if (/\b(resumen|notificaciones|ultimos|ultimo|recientes|reciente)\b/.test(command) && !/\bpedido\s+\d/.test(command)) {
+    state.activeNotificationId = "";
+    renderOrdersModule();
+    setModule("orders");
+    return { reply: latestTonySummary(), speech: assistantNarration() };
+  }
+
+  const requestedModule = tonyModuleFromCommand(command);
+  if (requestedModule) {
+    setModule(requestedModule, { focusPanel: true });
+    return { reply: `Listo, abrí ${MODULES[requestedModule].title.toLowerCase()}.` };
+  }
+
+  if (/quien.*mas pedidos|mayor carga|mas carga/.test(command)) {
+    const leader = cutterChartStats(state.dataset.orders)[0];
+    return { reply: leader ? `El cortador con más pedidos es ${leader.name}, con ${leader.total} pedidos asignados.` : "Aún no hay pedidos asignados a cortadores." };
+  }
+
+  if (/\b(porcentaje|avance)\b/.test(command) && /\b(entregad|terminad)\b/.test(command)) {
+    const counts = assistantCounts(state.dataset.orders);
+    const delivered = state.dataset.orders.length ? Math.round((counts.delivered / state.dataset.orders.length) * 100) : 0;
+    const finished = state.dataset.orders.length ? Math.round((counts.finished / state.dataset.orders.length) * 100) : 0;
+    return { reply: `El avance es ${finished}% terminado y ${delivered}% entregado.` };
+  }
+
+  const looksLikeOrderLookup = /\b\d{3,}\b/.test(command) || /\b(pedido|cliente|busca|buscar|encuentra|informacion|información|detalle)\b/.test(command);
+  if (looksLikeOrderLookup && !/\b(cuantos|cuantas|cuanto)\b/.test(command)) {
+    const result = findTonyOrder(command);
+    if (result) {
+      state.activeNotificationId = String(result.order.id);
+      renderOrdersModule();
+      setModule("orders", { focusPanel: true });
+      const reply = selectedOrderTonyAnswer(result.order, result.matches);
+      return { reply, speech: `${reply} Recibió ${result.order.receiver || "sin registro"}. Chofer ${result.order.driver || "sin registro"}.` };
+    }
+    if (/\b\d{3,}\b/.test(command) || /\b(busca|buscar|encuentra|pedido|cliente)\b/.test(command)) {
+      return { reply: "No encontré ese pedido o cliente. Prueba con el número completo del pedido o un nombre más específico." };
+    }
+  }
+
+  const statusAnswer = tonyStatusAnswer(command);
+  if (statusAnswer) return { reply: statusAnswer };
+
+  const byName = findTonyOrder(command);
+  if (byName) {
+    state.activeNotificationId = String(byName.order.id);
+    renderOrdersModule();
+    setModule("orders", { focusPanel: true });
+    return { reply: selectedOrderTonyAnswer(byName.order, byName.matches) };
+  }
+
+  return { reply: "No estoy seguro de cómo responder eso todavía. Prueba con “resume los pedidos”, “cuántos están pendientes”, “quién tiene más pedidos” o “busca el pedido 310965”." };
+}
+
+function askTony(prompt, { speak = false } = {}) {
+  const cleanPrompt = String(prompt || "").trim();
+  if (!cleanPrompt) return;
+  appendTonyChat("user", cleanPrompt);
+  const turn = ++tonyChatTurn;
+  setTonyCompanionMood("thinking", "Estoy revisando producción…");
+  const thinking = appendTonyChat("assistant", "Tony está pensando", { thinking: true });
+  window.setTimeout(() => {
+    if (thinking?.isConnected) thinking.remove();
+    const answer = resolveTonyPrompt(cleanPrompt);
+    appendTonyChat("assistant", answer.reply);
+    if (!assistantUtterance && !tonyRecognitionRunning) setTonyCompanionMood("idle", "Listo para ayudarte");
+    if (speak) speakTonyText(answer.speech || answer.reply);
+    else if (turn === tonyChatTurn) showTonyNudge(answer.reply, 5200);
+  }, 280);
+}
+
+function clampTonyPosition(x, y) {
+  const launcher = $("#tonyLauncher");
+  const size = launcher?.getBoundingClientRect().width || 88;
+  return {
+    x: Math.round(Math.min(Math.max(Number(x) || 8, 8), Math.max(8, window.innerWidth - size - 8))),
+    y: Math.round(Math.min(Math.max(Number(y) || 8, 8), Math.max(8, window.innerHeight - size - 8))),
+  };
+}
+
+function placeTony(x, y, { save = false } = {}) {
+  const orbit = $("#tonyOrbit");
+  if (!orbit) return;
+  const point = clampTonyPosition(x, y);
+  orbit.style.left = `${point.x}px`;
+  orbit.style.top = `${point.y}px`;
+  orbit.classList.toggle("tony-dock-left", point.x < window.innerWidth / 2);
+  orbit.classList.toggle("tony-dock-top", point.y < window.innerHeight / 2);
+  if (save) {
+    try { localStorage.setItem("produ-tony-position", JSON.stringify(point)); } catch (error) { /* Preferencia opcional. */ }
+  }
+}
+
+function setTonyCompanionOpen(open) {
+  const orbit = $("#tonyOrbit");
+  const companion = $("#tonyCompanion");
+  const launcher = $("#tonyLauncher");
+  if (!orbit || !companion || !launcher) return;
+  companion.hidden = !open;
+  orbit.classList.toggle("is-open", open);
+  launcher.setAttribute("aria-expanded", String(open));
+  if (open) {
+    $("#tonyNudge").hidden = true;
+    setTonyCompanionMood(assistantUtterance ? "speaking" : (tonyRecognitionRunning ? "listening" : "idle"), assistantUtterance ? "Tony está hablando" : (tonyRecognitionRunning ? "Tony está escuchando" : "Listo para ayudarte"));
+  }
+}
+
+function initializeTonyCompanion() {
+  const orbit = $("#tonyOrbit");
+  const launcher = $("#tonyLauncher");
+  const companion = $("#tonyCompanion");
+  if (!orbit || !launcher || !companion) return;
+
+  let position = null;
+  try { position = JSON.parse(localStorage.getItem("produ-tony-position") || "null"); } catch (error) { /* Preferencia opcional. */ }
+  placeTony(position?.x ?? window.innerWidth - 106, position?.y ?? window.innerHeight - 124);
+
+  launcher.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    const initial = orbit.getBoundingClientRect();
+    const start = { x: event.clientX, y: event.clientY, left: initial.left, top: initial.top };
+    let moved = false;
+    launcher.setPointerCapture(event.pointerId);
+    const move = (moveEvent) => {
+      const distance = Math.hypot(moveEvent.clientX - start.x, moveEvent.clientY - start.y);
+      if (distance > 5) moved = true;
+      if (!moved) return;
+      moveEvent.preventDefault();
+      placeTony(start.left + moveEvent.clientX - start.x, start.top + moveEvent.clientY - start.y);
+    };
+    const end = () => {
+      launcher.removeEventListener("pointermove", move);
+      launcher.removeEventListener("pointerup", end);
+      launcher.removeEventListener("pointercancel", end);
+      if (moved) placeTony(orbit.getBoundingClientRect().left, orbit.getBoundingClientRect().top, { save: true });
+      tonyDragged = moved;
+      window.setTimeout(() => { tonyDragged = false; }, 0);
+    };
+    launcher.addEventListener("pointermove", move);
+    launcher.addEventListener("pointerup", end);
+    launcher.addEventListener("pointercancel", end);
+  });
+
+  launcher.addEventListener("click", () => {
+    if (tonyDragged) return;
+    setTonyCompanionOpen(companion.hidden);
+  });
+  $("#tonyMinimizeBtn").addEventListener("click", () => setTonyCompanionOpen(false));
+  $("#tonyVoiceToggle").addEventListener("click", () => {
+    const voiceButton = $("#voiceCommandBtn");
+    if (voiceButton.disabled) {
+      showTonyNudge("La voz requiere HTTPS y un navegador compatible. Puedes escribirme aquí.");
+      return;
+    }
+    voiceButton.click();
+  });
+  $("#tonyChatForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("#tonyChatInput");
+    const prompt = input.value.trim();
+    if (!prompt) return;
+    input.value = "";
+    askTony(prompt);
+  });
+  $$("[data-tony-prompt]").forEach((button) => button.addEventListener("click", () => askTony(button.dataset.tonyPrompt)));
+  window.addEventListener("resize", () => {
+    const current = orbit.getBoundingClientRect();
+    placeTony(current.left, current.top, { save: true });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !companion.hidden) setTonyCompanionOpen(false);
+  });
+}
+
+function notifyTonyOfNewOrders(previousOrders, nextOrders) {
+  if (!previousOrders?.length || !nextOrders?.length) return;
+  const oldKeys = new Set(previousOrders.map((order) => `${order.id}|${order.recordAt || ""}`));
+  const additions = nextOrders.filter((order) => !oldKeys.has(`${order.id}|${order.recordAt || ""}`));
+  if (!additions.length) return;
+  const message = additions.length === 1
+    ? `Detecté un nuevo pedido: #${additions[0].id} de ${additions[0].client}.`
+    : `Detecté ${additions.length} pedidos nuevos. Ya actualicé el tablero.`;
+  appendTonyChat("assistant", message);
+  showTonyNudge(message, 7200);
+}
+
 function renderAll() {
   const values = metrics(state.dataset.orders);
   renderHeader();
@@ -941,26 +1176,65 @@ function updateConnectionStatus() {
 }
 
 async function loadData({ quiet = false } = {}) {
+  if (dataRefreshInFlight) return dataRefreshInFlight;
   const button = $("#refreshBtn");
-  button.disabled = true;
-  $("#refreshBtnText").textContent = "Actualizando…";
+  if (!quiet) {
+    button.disabled = true;
+    $("#refreshBtnText").textContent = "Actualizando…";
+  }
+  setAssistantThinking(true);
   if (!quiet) showMessage("working", "Leyendo la versión más reciente del JSON publicado…");
 
-  try {
-    const response = await fetch(`data/produccion.json?t=${Date.now()}`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`No se pudo leer el JSON (${response.status}).`);
-    const dataset = await response.json();
-    if (!dataset.meta || !Array.isArray(dataset.orders)) throw new Error("El JSON no tiene el formato esperado.");
-    state.dataset = dataset;
-    renderAll();
-    syncControls();
-    showMessage("success", `Datos actualizados: ${dataset.orders.length} pedidos disponibles.`);
-  } catch (error) {
-    showMessage("error", `${error.message} Si estás sin conexión, vuelve a intentarlo cuando recuperes Internet.`);
-  } finally {
-    button.disabled = false;
-    $("#refreshBtnText").textContent = "Actualizar datos";
-  }
+  dataRefreshInFlight = (async () => {
+    try {
+      const response = await fetch(`data/produccion.json?t=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`No se pudo leer el JSON (${response.status}).`);
+      const dataset = await response.json();
+      if (!dataset.meta || !Array.isArray(dataset.orders)) throw new Error("El JSON no tiene el formato esperado.");
+
+      const currentVersion = `${state.dataset.meta?.generatedAt || ""}|${state.dataset.meta?.sourceModifiedAt || ""}|${state.dataset.orders.length}`;
+      const nextVersion = `${dataset.meta.generatedAt || ""}|${dataset.meta.sourceModifiedAt || ""}|${dataset.orders.length}`;
+      const changed = currentVersion !== nextVersion;
+      if (changed) {
+        const previousOrders = state.dataset.orders;
+        state.dataset = dataset;
+        renderAll();
+        syncControls();
+        notifyTonyOfNewOrders(previousOrders, dataset.orders);
+      }
+      if (!quiet || changed) {
+        showMessage("success", changed
+          ? `Datos sincronizados: ${dataset.orders.length} pedidos disponibles.`
+          : `Ya cuentas con la versión más reciente: ${dataset.orders.length} pedidos.`);
+      }
+    } catch (error) {
+      if (!quiet) showMessage("error", `${error.message} Si estás sin conexión, vuelve a intentarlo cuando recuperes Internet.`);
+    } finally {
+      setAssistantThinking(false);
+      if (!quiet) {
+        button.disabled = false;
+        $("#refreshBtnText").textContent = "Actualizar datos";
+      }
+      dataRefreshInFlight = null;
+    }
+  })();
+
+  return dataRefreshInFlight;
+}
+
+function startDataRefresh() {
+  if (dataRefreshTimer) window.clearInterval(dataRefreshTimer);
+  dataRefreshTimer = window.setInterval(() => {
+    if (!document.hidden && navigator.onLine) {
+      loadData({ quiet: true });
+      checkForAppUpdate();
+    }
+  }, DATA_REFRESH_INTERVAL);
+}
+
+function checkForAppUpdate() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.getRegistration().then((registration) => registration?.update()).catch(() => undefined);
 }
 
 async function installApp() {
@@ -1067,12 +1341,23 @@ document.addEventListener("visibilitychange", () => {
     if (tonyRecognitionRunning && tonyRecognition) tonyRecognition.abort();
   } else {
     queueTonyRecognition(250);
+    if (navigator.onLine) {
+      loadData({ quiet: true });
+      checkForAppUpdate();
+    }
   }
 });
 window.addEventListener("pagehide", () => disableTonyVoice());
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (serviceWorkerReloaded) return;
+    serviceWorkerReloaded = true;
+    window.location.reload();
+  });
+  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").then((registration) => {
+    registration.update().catch(() => undefined);
+  }).catch(() => {
     showMessage("error", "No se pudo activar el modo sin conexión en este navegador.");
   }));
 }
@@ -1081,8 +1366,10 @@ if (window.matchMedia("(display-mode: standalone)").matches || window.navigator.
   $("#installBtn").hidden = true;
 }
 
+initializeTonyCompanion();
 initializeTonyVoice();
 applyTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 setModule(initialModule(), { updateUrl: false });
 updateConnectionStatus();
 loadData({ quiet: true });
+startDataRefresh();

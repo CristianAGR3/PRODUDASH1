@@ -20,7 +20,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="icon-192.png">
     <script>try{document.documentElement.dataset.theme=localStorage.getItem("produ-theme")||"light"}catch(e){}</script>
-    <link rel="stylesheet" href="styles.css?v=20260902-tony-voice">
+    <link rel="stylesheet" href="styles.css?v=20260903-tony-float-only">
   </head>
   <body>
     <div class="app-shell">
@@ -129,8 +129,11 @@
               <div class="assistant-heading">
                 <div class="assistant-identity">
                   <span class="assistant-mascot">
+                    <span class="tony-ripple tony-ripple-one" aria-hidden="true"></span>
+                    <span class="tony-ripple tony-ripple-two" aria-hidden="true"></span>
                     <img class="tony-mascot-dark" src="tony-mantarraya-oscura.png" alt="Tony, asistente virtual con forma de mantarraya">
                     <img class="tony-mascot-light" src="tony-mantarraya-blanca.png" alt="" aria-hidden="true">
+                    <span class="tony-shadow" aria-hidden="true"></span>
                   </span>
                   <div><p class="eyebrow">TONY · ASISTENTE VIRTUAL</p><h2>Tony te informa</h2></div>
                 </div>
@@ -262,6 +265,46 @@
         </footer>
       </main>
     </div>
-    <script src="app.js?v=20260902-tony-voice"></script>
+    <!-- Tony acompaña la aplicación completa: se puede mover y abrir desde cualquier módulo. -->
+    <aside id="tonyOrbit" class="tony-orbit" data-mood="idle" aria-label="Tony, asistente de producción">
+      <p id="tonyNudge" class="tony-nudge" role="status" aria-live="polite" hidden></p>
+      <button id="tonyLauncher" class="tony-launcher" type="button" aria-expanded="false" aria-controls="tonyCompanion" aria-label="Abrir a Tony, asistente de producción">
+        <span class="tony-float-aura" aria-hidden="true"></span>
+        <span class="tony-float-ripple tony-float-ripple-one" aria-hidden="true"></span>
+        <span class="tony-float-ripple tony-float-ripple-two" aria-hidden="true"></span>
+        <img class="tony-float-dark" src="tony-mantarraya-oscura.png" alt="">
+        <img class="tony-float-light" src="tony-mantarraya-blanca.png" alt="" aria-hidden="true">
+        <span class="tony-float-state" aria-hidden="true"></span>
+      </button>
+
+      <section id="tonyCompanion" class="tony-companion" role="dialog" aria-label="Conversación con Tony" hidden>
+        <header class="tony-companion-header">
+          <div class="tony-companion-title">
+            <span class="tony-mini-avatar" aria-hidden="true">T</span>
+            <span><strong>Tony</strong><small id="tonyCompanionStatus">Listo para ayudarte</small></span>
+          </div>
+          <div class="tony-companion-controls">
+            <button id="tonyVoiceToggle" class="tony-icon-button" type="button" aria-pressed="false" title="Activar o desactivar Oye Tony"><span aria-hidden="true">◉</span><span class="sr-only">Activar voz</span></button>
+            <button id="tonyMinimizeBtn" class="tony-icon-button" type="button" title="Minimizar a Tony"><span aria-hidden="true">−</span><span class="sr-only">Minimizar</span></button>
+          </div>
+        </header>
+        <div id="tonyConversation" class="tony-conversation" aria-live="polite">
+          <div class="tony-chat-message assistant"><span>Hola, soy Tony. Puedo buscar pedidos, revisar estados y guiarte por el tablero.</span></div>
+        </div>
+        <div class="tony-quick-actions" aria-label="Consultas rápidas">
+          <button type="button" data-tony-prompt="Dame un resumen">Resumen</button>
+          <button type="button" data-tony-prompt="Cuántos pedidos están pendientes">Pendientes</button>
+          <button type="button" data-tony-prompt="Quién tiene más pedidos">Carga</button>
+          <button type="button" data-tony-prompt="Ayuda">Ayuda</button>
+        </div>
+        <form id="tonyChatForm" class="tony-chat-form">
+          <label class="sr-only" for="tonyChatInput">Escribe una pregunta para Tony</label>
+          <input id="tonyChatInput" type="text" autocomplete="off" maxlength="220" placeholder="Ej. busca el pedido 310965">
+          <button type="submit" aria-label="Enviar a Tony"><span aria-hidden="true">↑</span></button>
+        </form>
+        <p class="tony-drag-tip">Arrastra a Tony por la pantalla. Puedes decir “Oye Tony” o escribirle.</p>
+      </section>
+    </aside>
+    <script src="app.js?v=20260903-tony-orbit"></script>
   </body>
 </html>
