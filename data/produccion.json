@@ -1,9 +1,9 @@
 {
   "meta": {
     "schemaVersion": 3,
-    "generatedAt": "2026-09-10T16:00:21.800Z",
+    "generatedAt": "2026-09-10T17:09:17.544Z",
     "source": "PRODUCCION.xlsm",
-    "sourceModifiedAt": "2026-09-10T16:00:14.814Z",
+    "sourceModifiedAt": "2026-09-10T17:09:09.502Z",
     "lastRecordAt": "2026-09-10T00:00:00",
     "totalOrders": 96
   },
@@ -92,7 +92,7 @@
       "movement": "CR",
       "cutter": "CLAUDIO",
       "production": "TERMINADO",
-      "delivery": "EN FILA",
+      "delivery": "ENTREGADO",
       "receiver": "SIN REGISTRO",
       "driver": null,
       "date": "10/09/2026",
@@ -612,7 +612,7 @@
       "movement": "CR",
       "cutter": "CLAUDIO",
       "production": "TERMINADO",
-      "delivery": "EN FILA",
+      "delivery": "ENTREGADO",
       "receiver": "SIN REGISTRO",
       "driver": null,
       "date": "07/09/2026",
@@ -638,7 +638,7 @@
       "movement": "CR",
       "cutter": "CLAUDIO",
       "production": "TERMINADO",
-      "delivery": "EN FILA",
+      "delivery": "ENTREGADO",
       "receiver": "SIN REGISTRO",
       "driver": null,
       "date": "07/09/2026",
