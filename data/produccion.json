@@ -1,9 +1,9 @@
 {
   "meta": {
     "schemaVersion": 3,
-    "generatedAt": "2026-09-10T17:09:17.544Z",
+    "generatedAt": "2026-09-10T19:39:33.610Z",
     "source": "PRODUCCION.xlsm",
-    "sourceModifiedAt": "2026-09-10T17:09:09.502Z",
+    "sourceModifiedAt": "2026-09-10T18:47:25.729Z",
     "lastRecordAt": "2026-09-10T00:00:00",
     "totalOrders": 96
   },
@@ -1130,7 +1130,7 @@
       "id": "311404",
       "client": "IVAN CRUZ",
       "movement": "Envío producción",
-      "cutter": "PENDIENTE",
+      "cutter": "TERMINADO",
       "production": "PENDIENTE",
       "delivery": "EN FILA",
       "receiver": "SIN REGISTRO",
