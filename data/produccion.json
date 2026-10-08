@@ -1,13 +1,13 @@
 {
   "meta": {
     "schemaVersion": 4,
-    "generatedAt": "2026-10-08T18:52:57.584381+00:00",
+    "generatedAt": "2026-10-08T18:53:53.105699+00:00",
     "source": "SQLite · PRODU Control",
-    "sourceModifiedAt": "2026-10-08T18:48:38.534396+00:00",
+    "sourceModifiedAt": "2026-10-08T18:53:50.286127+00:00",
     "lastRecordAt": "2026-10-08T18:48:38.534396+00:00",
     "totalOrders": 1,
     "databaseId": "b85ea9dc-93b3-4a04-a1f3-3b4655933a2c",
-    "revision": 7
+    "revision": 8
   },
   "orders": [
     {
@@ -15,16 +15,16 @@
       "client": "PRUEBA",
       "operator": "F|",
       "cutter": "F|",
-      "status": "En proceso",
+      "status": "Terminado",
       "movement": "Producción",
-      "production": "EN PROCESO",
+      "production": "TERMINADO",
       "delivery": "PENDIENTE",
       "receiver": "SIN REGISTRO",
       "driver": null,
       "date": "08/10/2026",
       "time": "12:48",
       "recordAt": "2026-10-08T12:48:38.534396-06:00",
-      "updatedAt": "2026-10-08T18:48:38.534396+00:00",
+      "updatedAt": "2026-10-08T18:53:50.286127+00:00",
       "deliveredAt": null
     }
   ]
