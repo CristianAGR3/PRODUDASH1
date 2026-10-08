@@ -98,14 +98,14 @@ class Application(ttk.Window):
         self.sync_label.pack(fill="x", pady=(18, 15))
         self.pages = {}
         self.page_container = ttk.Frame(main)
+        self.footer = ttk.Label(main, text="", foreground="#718075", font=("Segoe UI", 9))
+        self.footer.pack(side="bottom", fill="x", pady=(14, 0))
         self.page_container.pack(fill="both", expand=True)
         for name in ("orders", "analysis", "settings"):
             self.pages[name] = ttk.Frame(self.page_container)
         self.build_orders(self.pages["orders"])
         self.build_analysis(self.pages["analysis"])
         self.build_settings(self.pages["settings"])
-        self.footer = ttk.Label(main, text="", foreground="#718075", font=("Segoe UI", 9))
-        self.footer.pack(fill="x", pady=(14, 0))
         # Apply legacy Tk colors after ttkbootstrap has initialized its widgets.
         def color_sidebar(widget):
             if isinstance(widget, (tk.Frame, tk.Label)):
@@ -163,16 +163,16 @@ class Application(ttk.Window):
         ttk.Button(tools, text="Historial", bootstyle="dark-outline", command=self.show_history).pack(side="left")
         ttk.Button(tools, text="Exportar CSV", bootstyle="dark-outline", command=self.export).pack(side="right")
         ttk.Button(tools, text="↻  Actualizar", bootstyle="dark-outline", command=self.refresh).pack(side="right", padx=8)
+        self.result_label = ttk.Label(page, text="", foreground="#6b7e71", wraplength=920)
+        self.result_label.pack(side="bottom", anchor="w", pady=(10, 0))
         columns = (("ticket", "Ticket", 105), ("client", "Cliente", 220), ("operator", "Operador", 140),
                    ("status", "Estatus", 165), ("created_at", "Registro", 145), ("updated_at", "Último cambio", 145))
-        self.order_tree = self.make_tree(page, columns)
+        self.order_tree = self.make_tree(page, columns, height=6)
         self.order_tree.bind("<Double-1>", lambda e: self.edit_selected())
         for status, color in zip(STATUSES, ("#865b17", "#705390", "#217769", "#2b6b37")):
             self.order_tree.tag_configure(status, foreground=color)
         for field, title, width in columns:
             self.order_tree.heading(field, text=title, command=lambda f=field: self.sort_orders(f))
-        self.result_label = ttk.Label(page, text="", foreground="#6b7e71", wraplength=920)
-        self.result_label.pack(anchor="w", pady=(10, 0))
 
     def make_tree(self, parent, columns, height=None):
         wrap = ttk.Frame(parent)
