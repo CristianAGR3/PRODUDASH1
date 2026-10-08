@@ -26,7 +26,7 @@ const MODULES = {
 };
 
 const CHART_COLORS = ["#3f7f63", "#b78336", "#8f3630", "#557aa4", "#80629d", "#4f9698", "#bc6d45", "#728048"];
-const DATA_REFRESH_INTERVAL = 60000;
+const DATA_REFRESH_INTERVAL = 75000;
 const DATA_URL = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname)
   ? "data/produccion.json"
   : "https://api.github.com/repos/CristianAGR3/PRODUDASH1/contents/data/produccion.json?ref=main";
