@@ -1,4 +1,4 @@
-const CACHE_NAME = "produ-pwa-20261008-v17-5s";
+const CACHE_NAME = "produ-pwa-20261008-v18-github-api";
 const CACHE_PREFIX = "produ-pwa-";
 const APP_SHELL = [
   "./",
@@ -61,4 +61,5 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
+
 

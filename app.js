@@ -26,10 +26,10 @@ const MODULES = {
 };
 
 const CHART_COLORS = ["#3f7f63", "#b78336", "#8f3630", "#557aa4", "#80629d", "#4f9698", "#bc6d45", "#728048"];
-const DATA_REFRESH_INTERVAL = 5000;
+const DATA_REFRESH_INTERVAL = 60000;
 const DATA_URL = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname)
   ? "data/produccion.json"
-  : "https://raw.githubusercontent.com/CristianAGR3/PRODUDASH1/main/data/produccion.json";
+  : "https://api.github.com/repos/CristianAGR3/PRODUDASH1/contents/data/produccion.json?ref=main";
 
 const state = {
   dataset: { meta: {}, orders: [] },
@@ -1081,7 +1081,11 @@ async function loadData({ quiet = false } = {}) {
       let dataset;
       let offline = false;
       try {
-        const response = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: "no-store", signal: AbortSignal.timeout(15000) });
+        const response = await fetch(DATA_URL, {
+          cache: "no-store",
+          headers: { Accept: "application/vnd.github.raw+json" },
+          signal: AbortSignal.timeout(15000),
+        });
         if (!response.ok) throw new Error(`No se pudo leer el JSON (${response.status}).`);
         dataset = await response.json();
         if (dataset.meta?.schemaVersion !== 4 || !Array.isArray(dataset.orders)) throw new Error("La publicación no tiene el formato SQLite esperado.");
