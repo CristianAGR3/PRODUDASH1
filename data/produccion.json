@@ -1,15 +1,36 @@
 {
   "meta": {
     "schemaVersion": 4,
-    "generatedAt": "2026-10-08T21:34:00.506854+00:00",
+    "generatedAt": "2026-10-08T21:44:29.833488+00:00",
     "source": "SQLite · PRODU Control",
     "sourceModifiedAt": "2026-10-08T21:31:20.370685+00:00",
     "lastRecordAt": "2026-10-08T21:30:36.033090+00:00",
-    "totalOrders": 2,
-    "databaseId": "2b4e9b44-cf72-437e-b5e4-c9afc31ff402",
-    "revision": 3
+    "totalOrders": 3,
+    "databaseId": "b85ea9dc-93b3-4a04-a1f3-3b4655933a2c",
+    "revision": 10
   },
   "orders": [
+    {
+      "id": "511313",
+      "ticket": "511313",
+      "client": "ñkfdkldh",
+      "operator": "JOAN",
+      "status": "Terminado",
+      "created_at": "2026-10-08T21:30:36.033090+00:00",
+      "updated_at": "2026-10-08T21:31:20.370685+00:00",
+      "delivered_at": null,
+      "cutter": "JOAN",
+      "movement": "Producción",
+      "production": "TERMINADO",
+      "delivery": "PENDIENTE",
+      "receiver": "SIN REGISTRO",
+      "driver": null,
+      "date": "08/10/2026",
+      "time": "15:30",
+      "recordAt": "2026-10-08T15:30:36.033090-06:00",
+      "updatedAt": "2026-10-08T21:31:20.370685+00:00",
+      "deliveredAt": null
+    },
     {
       "id": "233645",
       "ticket": "233645",
@@ -32,24 +53,24 @@
       "deliveredAt": null
     },
     {
-      "id": "511313",
-      "ticket": "511313",
-      "client": "ñkfdkldh",
-      "operator": "JOAN",
+      "id": "15641",
+      "ticket": "15641",
+      "client": "PRUEBA",
+      "operator": "F|",
       "status": "Terminado",
-      "created_at": "2026-10-08T21:30:36.033090+00:00",
-      "updated_at": "2026-10-08T21:31:20.370685+00:00",
+      "created_at": "2026-10-08T18:48:38.534396+00:00",
+      "updated_at": "2026-10-08T18:53:50.286127+00:00",
       "delivered_at": null,
-      "cutter": "JOAN",
+      "cutter": "F|",
       "movement": "Producción",
       "production": "TERMINADO",
       "delivery": "PENDIENTE",
       "receiver": "SIN REGISTRO",
       "driver": null,
       "date": "08/10/2026",
-      "time": "15:30",
-      "recordAt": "2026-10-08T15:30:36.033090-06:00",
-      "updatedAt": "2026-10-08T21:31:20.370685+00:00",
+      "time": "12:48",
+      "recordAt": "2026-10-08T12:48:38.534396-06:00",
+      "updatedAt": "2026-10-08T18:53:50.286127+00:00",
       "deliveredAt": null
     }
   ]
