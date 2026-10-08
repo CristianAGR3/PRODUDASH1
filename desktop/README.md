@@ -1,4 +1,4 @@
-# PRODU Control 1.0
+# PRODU Control 1.0.1
 
 Aplicación portable de Windows de 64 bits para administrar pedidos de producción con SQLite. El ejecutable incluye Python: no necesitas instalar Python, Excel ni un servidor MySQL.
 
@@ -31,6 +31,8 @@ La subida publica una copia completa en `data/produccion.json`; los filtros no l
 Si el dashboard pertenece a otra base, existe una versión más nueva o el JSON cambió fuera del programa, se bloquea la sustitución para evitar perder información. Después de revisar cuál base es la correcta, puedes marcar **Permitir sustituir datos de otra base en la próxima subida**; se desmarca tras una subida exitosa. Cada copia del paquete comienza vacía; usa una sola base de producción como fuente de publicación. Copiar o respaldar la base conserva su identificador.
 
 Si GitHub rechaza la subida, revisa el token, su vencimiento, el repositorio elegido, el permiso Contents y las reglas de la rama. Los pedidos locales permanecen guardados. Cuando caduque el token, reemplázalo en Configuración.
+
+Desde la versión 1.0.1, el mensaje de error incluye el código HTTP y el detalle devuelto por GitHub. Los rechazos por permisos se distinguen de los límites de solicitudes. Para recibir ayuda, comparte el texto del error; el programa oculta cualquier token que pudiera aparecer en ese texto.
 
 ## Respaldos y reportes
 

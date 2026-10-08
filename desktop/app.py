@@ -17,7 +17,7 @@ from core import Database, STATUSES, display_date, export_csv, local_datetime, r
 from sync import DEFAULTS, SETTINGS_DIR, Publisher, load_settings, protect, save_settings
 
 BASE_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 
 class Application(ttk.Window):

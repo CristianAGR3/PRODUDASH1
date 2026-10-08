@@ -3,9 +3,12 @@ import csv
 import json
 import tempfile
 import unittest
+import io
+import urllib.error
+from unittest.mock import patch
 from pathlib import Path
 from core import Database, STATUSES, export_csv, ranking, summary
-from sync import Publisher, SyncError, protect
+from sync import Publisher, SyncError, protect, explain_http_error
 
 
 class StorageTests(unittest.TestCase):
@@ -179,6 +182,44 @@ class SyncTests(unittest.TestCase):
         encrypted = protect("sample-token")
         self.assertNotIn("sample-token", encrypted)
         self.assertEqual(protect(encrypted, decrypt=True), "sample-token")
+
+    def test_permission_rejection_shows_repository_and_required_permission(self):
+        exc = urllib.error.HTTPError("https://api.github.com", 403, "Forbidden",
+                                     {"X-Accepted-GitHub-Permissions": "contents=write"},
+                                     io.BytesIO(b'{"message":"Resource not accessible by personal access token"}'))
+        self.addCleanup(exc.close)
+        message = explain_http_error(exc, "test-token", "CristianAGR3/PRODUDASH1", "PUT")
+        self.assertIn("Only select repositories", message)
+        self.assertIn("PRODUDASH1", message)
+        self.assertIn("contents=write", message)
+        self.assertIn("HTTP 403", message)
+
+    def test_rate_limit_is_distinguished_from_permissions(self):
+        exc = urllib.error.HTTPError("https://api.github.com", 403, "Forbidden",
+                                     {"X-RateLimit-Remaining": "0", "Retry-After": "60"},
+                                     io.BytesIO(b'{"message":"API rate limit exceeded"}'))
+        self.addCleanup(exc.close)
+        message = explain_http_error(exc, "test-token", "CristianAGR3/PRODUDASH1", "GET")
+        self.assertIn("60 segundos", message)
+        self.assertNotIn("Only select repositories", message)
+
+    def test_error_does_not_reveal_token(self):
+        token = "github_pat_private_secret"
+        body = json.dumps({"message": f"Rejected {token}"}).encode()
+        exc = urllib.error.HTTPError("https://api.github.com", 403, "Forbidden", {}, io.BytesIO(body))
+        self.addCleanup(exc.close)
+        message = explain_http_error(exc, token, "CristianAGR3/PRODUDASH1", "PUT")
+        self.assertNotIn(token, message)
+        self.assertIn("credencial oculta", message)
+
+    def test_request_reports_actual_github_error(self):
+        body = io.BytesIO(b'{"message":"Resource not accessible by personal access token"}')
+        exc = urllib.error.HTTPError("https://api.github.com", 403, "Forbidden", {}, body)
+        publisher = Publisher("CristianAGR3/PRODUDASH1", "main", "sample-token")
+        with patch("urllib.request.urlopen", side_effect=exc):
+            with self.assertRaisesRegex(SyncError, "Detalle de GitHub"):
+                publisher.request(publisher.url, data={"test": "payload"})
+        self.assertTrue(body.closed)
 
 
 if __name__ == "__main__":

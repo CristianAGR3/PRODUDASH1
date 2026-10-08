@@ -60,6 +60,46 @@ class SyncError(Exception):
     pass
 
 
+def explain_http_error(exc, token, repository, method):
+    """Report GitHub's actual rejection without exposing the credential."""
+    message = ""
+    try:
+        body = json.loads(exc.read(32768).decode("utf-8", errors="replace"))
+        message = str(body.get("message", ""))
+    except (ValueError, OSError, AttributeError):
+        pass
+    message = message.replace(token, "[credencial oculta]") if token else message
+    message = re.sub(r"github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9_]+", "[credencial oculta]", message)
+    message = " ".join(message.split())[:350]
+    headers = exc.headers or {}
+    lower = message.lower()
+    if exc.code in (403, 429) and (headers.get("X-RateLimit-Remaining") == "0" or "rate limit" in lower):
+        explanation = "GitHub limitó temporalmente las solicitudes. Espera antes de volver a subir."
+        if headers.get("Retry-After"):
+            explanation += f" Reintenta después de {headers['Retry-After']} segundos."
+    elif exc.code == 403 and "resource not accessible" in lower:
+        explanation = (f"El token no tiene acceso suficiente para esta operación. En GitHub, edita el token y verifica:\n"
+                       f"• Resource owner: {repository.split('/')[0]}\n"
+                       f"• Repository access: Only select repositories → {repository.split('/')[1]}\n"
+                       "• Repository permissions: Contents → Read and write\n"
+                       "Guarda los cambios del token y vuelve a intentar la subida.")
+    elif exc.code == 403:
+        explanation = "GitHub rechazó la operación. Revisa el detalle de abajo para identificar permisos, reglas de rama o restricciones de la cuenta."
+    else:
+        explanation = {401: "El token es inválido, fue revocado o expiró. Vuelve a copiar el token completo en Configuración.",
+                       404: "No se encontró el repositorio, archivo o rama, o el token no puede acceder. Revisa propietario, repositorio seleccionado y rama.",
+                       409: "El dashboard cambió durante la subida. Actualiza e inténtalo otra vez.",
+                       422: "GitHub no aceptó la actualización. Revisa el detalle y las reglas de la rama."}.get(
+                           exc.code, f"GitHub respondió con error {exc.code}.")
+    accepted = headers.get("X-Accepted-GitHub-Permissions", "")
+    detail = f"\n\nHTTP {exc.code} · {method}"
+    if message:
+        detail += "\nDetalle de GitHub: " + message
+    if accepted:
+        detail += "\nPermiso requerido: " + str(accepted)[:150]
+    return explanation + detail
+
+
 class Publisher:
     def __init__(self, repository, branch, token):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
@@ -82,12 +122,11 @@ class Publisher:
             with urllib.request.urlopen(req, timeout=35) as response:
                 return json.load(response)
         except urllib.error.HTTPError as exc:
-            explanations = {401: "El token es inválido o expiró.",
-                            403: "GitHub rechazó el acceso. Revisa Contents: Read and write, restricciones de rama o límite de API.",
-                            404: "No se encontró el repositorio, archivo o rama. Revisa la configuración y el acceso del token.",
-                            409: "El dashboard cambió durante la subida. Actualiza e inténtalo otra vez.",
-                            422: "GitHub no aceptó la actualización. Revisa la rama y sus reglas."}
-            raise SyncError(explanations.get(exc.code, f"GitHub respondió con error {exc.code}.")) from None
+            try:
+                explanation = explain_http_error(exc, self.token, self.repository, req.get_method())
+            finally:
+                exc.close()
+            raise SyncError(explanation) from None
         except (urllib.error.URLError, TimeoutError, OSError):
             raise SyncError("No se pudo conectar con GitHub. Tus pedidos siguen guardados; reintenta cuando tengas Internet.") from None
 
