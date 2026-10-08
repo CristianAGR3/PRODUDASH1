@@ -1,4 +1,4 @@
-# PRODU Control 1.0.2
+# PRODU Control 1.1.0
 
 Aplicación portable de Windows de 64 bits para administrar pedidos de producción con SQLite. El ejecutable incluye Python: no necesitas instalar Python, Excel ni un servidor MySQL.
 
@@ -12,7 +12,26 @@ Aplicación portable de Windows de 64 bits para administrar pedidos de producci�
 
 **Pendientes de entrega = todos los pedidos que todavía no están Entregados a cliente**, incluidos los terminados. El ranking muestra pendientes, total y cada estatus por operador o cliente. Entregas por día cuenta los pedidos actualmente entregados en su fecha de entrega. Al reabrir un pedido, deja de contar como entregado; la entrega anterior queda en el historial.
 
-Los tickets son únicos, conservan ceros iniciales y pueden contener letras. No se importan los pedidos antiguos de Excel. Las observaciones son opcionales y permanecen en la base local. No se incluye un botón para borrar pedidos.
+Los tickets son únicos, conservan ceros iniciales y pueden contener letras. No se importan los pedidos antiguos de Excel. Las observaciones son opcionales y permanecen en la base local.
+
+## Diseño y modo oscuro
+
+El botón **Modo oscuro / Modo claro** cambia toda la interfaz y recuerda tu preferencia en esta cuenta de Windows. Pedidos muestra tarjetas por estatus, filas alternadas y el detalle del pedido seleccionado. En ventanas pequeñas se usa una distribución compacta para dejar espacio a la tabla; el formulario y el historial muestran el detalle completo. Análisis incluye barras de carga por operador y una gráfica de distribución de estatus, además de los rankings y las entregas por día. Usa los filtros de Pedidos para limitar también el análisis.
+
+## Borrar con contraseña y motivo
+
+1. Selecciona el pedido y pulsa **Borrar**. En el primer uso se te pide crear y repetir una contraseña de al menos 8 caracteres; no hay contraseña predeterminada.
+2. Revisa el ticket, cliente, operador y estatus. Introduce la contraseña y escribe el motivo del borrado. Pulsa **Confirmar borrado**.
+3. El programa abre **Borrados**, donde se conservan los datos originales, observaciones, estatus al borrar, fecha, motivo y usuario de Windows que ejecutó el programa. El buscador permite encontrar registros por ticket, cliente, operador, motivo o usuario; el detalle e historial muestran el motivo completo y todos los cambios.
+4. El pedido deja de contar en las listas, totales, gráficas y exportaciones activas. Pulsa **Subir a dashboard** para retirar el pedido de la vista publicada.
+
+El registro de borrados y su motivo permanecen en la base local y no se envían al dashboard. Los tickets borrados siguen reservados, para conservar un historial único. No se permite modificar o borrar de nuevo un registro archivado.
+
+En Configuración puedes crear o cambiar la contraseña; para cambiarla se requiere la anterior. Es una contraseña por base y forma parte de sus respaldos. Se guarda una verificación derivada mediante PBKDF2 con un valor aleatorio, no la contraseña en texto. Esta protección controla el botón Borrar; el archivo SQLite no está cifrado. Guarda tu contraseña: el programa no dispone de recuperación automática.
+
+## Actualizar desde 1.0.x
+
+Cierra el programa y sustituye únicamente `PRODU_Control.exe` por el ejecutable de esta actualización, en la misma carpeta que ya utilizas. Conserva `pedidos.db` y sus respaldos. La actualización no incluye otra base de datos. Al abrir una base de la versión anterior se crea un respaldo consistente `*_respaldo_antes_1_1_*.db` junto a ella, antes de agregar los campos de borrado. Se conservan los pedidos, el historial, el identificador y la configuración de publicación. Después de actualizar, usa la versión 1.1.0 para esa base.
 
 ## Conectar el dashboard
 
@@ -38,7 +57,7 @@ Desde la versión 1.0.2, el formulario de pedidos conserva los botones Guardar p
 
 ## Respaldos y reportes
 
-- En Configuración, **Crear respaldo .db** guarda pedidos e historial en un archivo nuevo. La copia es consistente incluso si la base usa archivos temporales WAL.
+- En Configuración, **Crear respaldo .db** guarda pedidos, historial, borrados y protección del borrado en un archivo nuevo. La copia es consistente incluso si la base usa archivos temporales WAL.
 - **Abrir otra base .db** permite trabajar con una base existente o un respaldo compatible. El programa recuerda esa ruta; la base original permanece en su carpeta.
 - **Exportar CSV** exporta la vista actual, incluidas las observaciones, con formato compatible con Excel. Esto es un reporte y no una dependencia de Excel.
 - Si copias manualmente la base, cierra todas las instancias del programa primero. Conserva el archivo `.db`: contiene tus pedidos. El programa puede crear archivos auxiliares `.db-wal` y `.db-shm` mientras está abierto.
@@ -49,7 +68,7 @@ Atajos: Ctrl+N nuevo pedido, Ctrl+F buscar, F5 actualizar la vista, Ctrl+Enter g
 
 El código Python está en esta carpeta. Para modificarlo, instala Python de 64 bits, ejecuta `py -m pip install -r requirements.txt` y después `py app.py`. `build.ps1` genera el ejecutable en `dist`. El paquete utiliza tkinter/ttkbootstrap, SQLite, Pillow y tzdata.
 
-Pruebas: `py -m unittest discover -s . -p test_app.py -v`. El ejecutable admite `--self-test` y termina con código 0 cuando su prueba de guardado/entrega funciona. Todas las pruebas usan bases temporales; no añaden pedidos al archivo entregado.
+Pruebas: `py -m unittest discover -s . -p test_app.py -v`. El ejecutable admite `--self-test` y termina con código 0 cuando funcionan el guardado, la entrega, el borrado protegido y la exclusión del borrado de la publicación. Todas las pruebas usan bases temporales; no añaden pedidos al archivo entregado.
 
 Los errores técnicos se registran localmente en `%LOCALAPPDATA%/PRODU Control/errores.log`.
 

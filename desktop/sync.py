@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 
 DEFAULTS = {"repository": "CristianAGR3/PRODUDASH1", "branch": "main",
-            "dashboard_url": "https://produdash.pages.dev/", "token_encrypted": "", "db_path": ""}
+            "dashboard_url": "https://produdash.pages.dev/", "token_encrypted": "", "db_path": "", "theme": "light"}
 SETTINGS_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.cwd()))) / "PRODU Control"
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 

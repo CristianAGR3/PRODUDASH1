@@ -15,17 +15,22 @@ from tkinter import filedialog, messagebox
 import ttkbootstrap as ttk
 from core import Database, STATUSES, display_date, export_csv, local_datetime, ranking, summary
 from sync import DEFAULTS, SETTINGS_DIR, Publisher, load_settings, protect, save_settings
+from appearance import AppearanceMixin
+from management import DeletionMixin
 
 BASE_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
-VERSION = "1.0.2"
+VERSION = "1.1.0"
 
 
-class Application(ttk.Window):
+class Application(AppearanceMixin, DeletionMixin, ttk.Window):
     def __init__(self, db_path=None, isolated=False):
-        super().__init__(themename="litera", title="PRODU · Control de pedidos", size=(1280, 820), minsize=(1000, 620))
+        initial_settings = dict(DEFAULTS) if isolated else load_settings()
+        super().__init__(themename="darkly" if initial_settings.get("theme") == "dark" else "litera",
+                         title="PRODU · Control de pedidos", size=(1360, 900), minsize=(1000, 620))
         self.geometry(f"{min(1280, self.winfo_screenwidth()-70)}x{min(820, self.winfo_screenheight()-100)}")
         self.isolated = isolated
-        self.settings = dict(DEFAULTS) if isolated else load_settings()
+        self.settings = initial_settings
+        self.initialize_appearance()
         self.db = Database(db_path or self.settings.get("db_path") or BASE_DIR / "pedidos.db")
         self.token = ""
         if self.settings.get("token_encrypted"):
@@ -40,19 +45,16 @@ class Application(ttk.Window):
         self.search_job = None
         self.sort_key = None
         self.sort_reverse = False
-        self.style.configure("Treeview", rowheight=37, font=("Segoe UI", 10))
-        self.style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"), padding=(8, 10))
-        self.style.configure("TButton", font=("Segoe UI", 10), padding=(12, 8))
-        self.style.configure("TLabel", font=("Segoe UI", 10))
-        self.style.configure("Title.TLabel", font=("Segoe UI", 25, "bold"))
-        self.style.configure("Kpi.TLabel", font=("Segoe UI", 26, "bold"))
-        self.style.configure("Section.TLabel", font=("Segoe UI", 13, "bold"))
+        self.apply_styles()
         try:
             self.iconbitmap(str(Path(getattr(sys, "_MEIPASS", BASE_DIR)) / "produ.ico"))
         except tk.TclError:
             pass
         self.build()
+        self.apply_styles()
         self.refresh()
+        self.bind("<Configure>", self.adapt_layout, add="+")
+        self.after_idle(self.adapt_layout)
         self.protocol("WM_DELETE_WINDOW", self.close_app)
         self.bind("<Control-n>", lambda e: self.edit_order())
         self.bind("<Control-f>", lambda e: self.focus_search())
@@ -68,7 +70,7 @@ class Application(ttk.Window):
         tk.Label(sidebar, text="▦ PRODU", bg="#173b35", fg="#f2f7f4", font=("Segoe UI", 20, "bold"), anchor="w").pack(fill="x", padx=20, pady=(30, 2))
         tk.Label(sidebar, text="CONTROL DE PEDIDOS", bg="#173b35", fg="#aec5b9", font=("Segoe UI", 9), anchor="w").pack(fill="x", padx=22, pady=(0, 35))
         self.nav = {}
-        for key, label in (("orders", "▤   Pedidos"), ("analysis", "▥   Análisis"), ("settings", "⚙   Configuración")):
+        for key, label in (("orders", "▤   Pedidos"), ("analysis", "▥   Análisis"), ("deleted", "⌫   Borrados"), ("settings", "⚙   Configuración")):
             b = tk.Button(sidebar, text=label, command=lambda k=key: self.show_page(k), bg="#173b35", fg="#e6eee9",
                           activebackground="#2b5347", activeforeground="white", relief="flat", bd=0,
                           anchor="w", font=("Segoe UI", 12), padx=14, pady=13, cursor="hand2")
@@ -78,60 +80,64 @@ class Application(ttk.Window):
         bottom.pack(side="bottom", fill="x", padx=22, pady=25)
         tk.Label(bottom, text="●  SQLite local", bg="#173b35", fg="#b5d59e", font=("Segoe UI", 10), anchor="w").pack(fill="x")
         tk.Label(bottom, text=f"PRODU Control {VERSION}\nRegistro sin conexión", bg="#173b35", fg="#aec5b9", justify="left", font=("Segoe UI", 9), anchor="w").pack(fill="x", pady=(8, 0))
-        main = ttk.Frame(self, padding=(26, 23))
+        main = ttk.Frame(self, padding=(22, 16))
         main.pack(side="left", fill="both", expand=True)
         header = ttk.Frame(main)
         header.pack(fill="x")
         titles = ttk.Frame(header)
         titles.pack(side="left", fill="x", expand=True)
-        ttk.Label(titles, text="PRODUCCIÓN / CONTROL OPERATIVO", foreground="#55766b", font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        self.eyebrow = ttk.Label(titles, text="PRODUCCIÓN / CONTROL OPERATIVO", style="Eyebrow.TLabel")
+        self.eyebrow.pack(anchor="w")
         self.title_label = ttk.Label(titles, text="Pedidos de producción", style="Title.TLabel")
         self.title_label.pack(anchor="w", pady=(4, 3))
-        self.subtitle = ttk.Label(titles, text="Registra, localiza y da seguimiento a cada pedido.", foreground="#6c7870")
+        self.subtitle = ttk.Label(titles, text="Registra, localiza y da seguimiento a cada pedido.", style="Muted.TLabel")
         self.subtitle.pack(anchor="w")
         actions = ttk.Frame(header)
         actions.pack(side="right", anchor="n", pady=(5, 0))
-        self.upload_btn = ttk.Button(actions, text="↑  Subir a dashboard", bootstyle="success", command=self.upload)
-        self.upload_btn.pack(anchor="e")
+        action_row = ttk.Frame(actions)
+        action_row.pack(anchor="e")
+        self.theme_button = ttk.Button(action_row, text="☾  Modo oscuro", bootstyle="secondary-outline", command=self.toggle_theme)
+        self.theme_button.pack(side="left", padx=(0, 8))
+        self.upload_btn = ttk.Button(action_row, text="↑  Subir a dashboard", bootstyle="success", command=self.upload)
+        self.upload_btn.pack(side="left")
         ttk.Button(actions, text="Abrir dashboard ↗", bootstyle="link", command=self.open_dashboard).pack(anchor="e", pady=(3, 0))
-        self.sync_label = ttk.Label(main, text="", foreground="#65786c", wraplength=930)
-        self.sync_label.pack(fill="x", pady=(18, 15))
+        self.sync_label = ttk.Label(main, text="", style="Muted.TLabel", wraplength=930)
+        self.sync_label.pack(fill="x", pady=(10, 10))
         self.pages = {}
         self.page_container = ttk.Frame(main)
-        self.footer = ttk.Label(main, text="", foreground="#718075", font=("Segoe UI", 9))
-        self.footer.pack(side="bottom", fill="x", pady=(14, 0))
+        self.footer = ttk.Label(main, text="", style="Muted.TLabel", font=("Segoe UI", 9))
+        self.footer.pack(side="bottom", fill="x", pady=(8, 0))
         self.page_container.pack(fill="both", expand=True)
-        for name in ("orders", "analysis", "settings"):
+        for name in ("orders", "analysis", "deleted", "settings"):
             self.pages[name] = ttk.Frame(self.page_container)
         self.build_orders(self.pages["orders"])
         self.build_analysis(self.pages["analysis"])
+        self.build_deleted(self.pages["deleted"])
         self.build_settings(self.pages["settings"])
         # Apply legacy Tk colors after ttkbootstrap has initialized its widgets.
         def color_sidebar(widget):
             if isinstance(widget, (tk.Frame, tk.Label)):
-                widget.configure(background="#173b35")
+                widget.configure(background=self.palette["sidebar"])
             if isinstance(widget, tk.Label):
                 widget.configure(foreground="#e6eee9")
             for child in widget.winfo_children():
                 color_sidebar(child)
         color_sidebar(sidebar)
+        self.repaint_sidebar = color_sidebar
         self.show_page("orders")
 
     def build_orders(self, page):
-        ttk.Label(page, text="RESUMEN DE LA VISTA", foreground="#6d8076", font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 8))
+        self.order_summary_caption = ttk.Label(page, text="RESUMEN DE LA VISTA", style="Eyebrow.TLabel")
+        self.order_summary_caption.pack(anchor="w", pady=(0, 8))
         cards = ttk.Frame(page)
+        self.order_cards = cards
         cards.pack(fill="x")
         self.kpis = {}
-        for i, (key, label, color) in enumerate((("total", "Total", "#2e5870"), (STATUSES[0], "En proceso", "#aa651b"),
-                (STATUSES[1], "En resguardo", "#7154a1"), (STATUSES[2], "Terminados", "#257b6e"),
-                (STATUSES[3], "Entregados", "#3e7943"), ("pending", "Pendientes", "#b45353"))):
-            cards.columnconfigure(i, weight=1, uniform="card")
-            box = ttk.Frame(cards, padding=(12, 10), bootstyle="light")
-            box.grid(row=0, column=i, sticky="ew", padx=(0, 8 if i < 5 else 0))
-            ttk.Label(box, text=label, bootstyle="inverse-light", foreground=color, font=("Segoe UI", 10)).pack(anchor="w")
-            value = ttk.Label(box, text="0", style="Kpi.TLabel", bootstyle="inverse-light", foreground=color)
-            value.pack(anchor="w", pady=(3, 0))
-            self.kpis[key] = value
+        self.kpi_notes = {}
+        for i, (key, label, index) in enumerate((("total", "TOTAL", None), (STATUSES[0], "EN PROCESO", 0),
+                (STATUSES[1], "RESGUARDO", 1), (STATUSES[2], "TERMINADOS", 2),
+                (STATUSES[3], "ENTREGADOS", 3), ("pending", "POR ENTREGAR", 0))):
+            self.kpis[key], self.kpi_notes[key] = self.make_stat_card(cards, i, label, index, compact=True)
         filters = ttk.Frame(page, padding=(0, 15, 0, 12))
         filters.pack(fill="x")
         for i, weight in enumerate((3, 2, 2, 1, 1, 0)):
@@ -142,7 +148,7 @@ class Application(ttk.Window):
         self.from_var = tk.StringVar()
         self.to_var = tk.StringVar()
         for i, text in enumerate(("Buscar ticket, cliente u operador", "Estatus", "Operador", "Desde · AAAA-MM-DD", "Hasta · AAAA-MM-DD")):
-            ttk.Label(filters, text=text, font=("Segoe UI", 9), foreground="#69786e").grid(row=0, column=i, sticky="w", pady=(0, 5))
+            ttk.Label(filters, text=text, style="Muted.TLabel").grid(row=0, column=i, sticky="w", pady=(0, 5))
         self.search_entry = ttk.Entry(filters, textvariable=self.query_var, width=26)
         self.search_entry.grid(row=1, column=0, sticky="ew", padx=(0, 9))
         ttk.Combobox(filters, textvariable=self.status_var, values=("Todos", *STATUSES), state="readonly", width=19).grid(row=1, column=1, sticky="ew", padx=(0, 9))
@@ -153,24 +159,37 @@ class Application(ttk.Window):
             entry.grid(row=1, column=i, sticky="ew", padx=(0, 9))
             entry.bind("<Return>", lambda e: self.refresh())
             entry.bind("<FocusOut>", lambda e: self.refresh(silent=True))
-        ttk.Button(filters, text="Limpiar", bootstyle="dark-outline", command=self.clear_filters).grid(row=1, column=5, sticky="ew")
+        ttk.Button(filters, text="Limpiar", bootstyle="secondary-outline", command=self.clear_filters).grid(row=1, column=5, sticky="ew")
         for var in (self.query_var, self.status_var, self.operator_var):
             var.trace_add("write", lambda *args: self.schedule_search())
         tools = ttk.Frame(page)
         tools.pack(fill="x", pady=(0, 10))
-        ttk.Button(tools, text="+  Nuevo pedido", bootstyle="success", command=self.edit_order).pack(side="left")
-        ttk.Button(tools, text="Editar / estatus", bootstyle="dark-outline", command=self.edit_selected).pack(side="left", padx=8)
-        ttk.Button(tools, text="Historial", bootstyle="dark-outline", command=self.show_history).pack(side="left")
-        ttk.Button(tools, text="Exportar CSV", bootstyle="dark-outline", command=self.export).pack(side="right")
-        ttk.Button(tools, text="↻  Actualizar", bootstyle="dark-outline", command=self.refresh).pack(side="right", padx=8)
-        self.result_label = ttk.Label(page, text="", foreground="#6b7e71", wraplength=920)
+        tools.columnconfigure(0, weight=1)
+        edit_tools = ttk.Frame(tools)
+        edit_tools.grid(row=0, column=0, sticky="w")
+        report_tools = ttk.Frame(tools)
+        report_tools.grid(row=0, column=1, sticky="e")
+        ttk.Button(edit_tools, text="+  Nuevo pedido", bootstyle="success", command=self.edit_order).pack(side="left")
+        self.edit_button = ttk.Button(edit_tools, text="Editar / estatus", bootstyle="secondary-outline", command=self.edit_selected)
+        self.edit_button.pack(side="left", padx=6)
+        ttk.Button(edit_tools, text="Historial", bootstyle="secondary-outline", command=self.show_history).pack(side="left")
+        ttk.Button(edit_tools, text="Borrar", bootstyle="danger-outline", command=self.delete_selected).pack(side="left", padx=8)
+        ttk.Button(report_tools, text="↻  Actualizar", bootstyle="secondary-outline", command=self.refresh).pack(side="left", padx=(0, 8))
+        self.csv_button = ttk.Button(report_tools, text="Exportar CSV", bootstyle="secondary-outline", command=self.export)
+        self.csv_button.pack(side="left")
+        def arrange_tools(event):
+            narrow = event.width < edit_tools.winfo_reqwidth() + report_tools.winfo_reqwidth() + 15
+            report_tools.grid_configure(row=1 if narrow else 0, column=0 if narrow else 1,
+                                        sticky="w" if narrow else "e", pady=(8, 0) if narrow else 0)
+        tools.bind("<Configure>", arrange_tools)
+        self.result_label = ttk.Label(page, text="", style="Muted.TLabel", wraplength=920)
         self.result_label.pack(side="bottom", anchor="w", pady=(10, 0))
-        columns = (("ticket", "Ticket", 105), ("client", "Cliente", 220), ("operator", "Operador", 140),
-                   ("status", "Estatus", 165), ("created_at", "Registro", 145), ("updated_at", "Último cambio", 145))
+        self.build_order_detail(page)
+        columns = (("ticket", "Ticket", 95), ("client", "Cliente", 185), ("operator", "Operador", 120),
+                   ("status", "Estatus", 175), ("created_at", "Registro", 145), ("updated_at", "Último cambio", 145))
         self.order_tree = self.make_tree(page, columns, height=6)
         self.order_tree.bind("<Double-1>", lambda e: self.edit_selected())
-        for status, color in zip(STATUSES, ("#865b17", "#705390", "#217769", "#2b6b37")):
-            self.order_tree.tag_configure(status, foreground=color)
+        self.order_tree.bind("<<TreeviewSelect>>", lambda e: self.render_order_detail())
         for field, title, width in columns:
             self.order_tree.heading(field, text=title, command=lambda f=field: self.sort_orders(f))
 
@@ -191,33 +210,13 @@ class Application(ttk.Window):
             tree.column(field, width=width, minwidth=80, anchor="w" if field in ("ticket", "client", "operator", "status", "name") else "center")
         return tree
 
-    def build_analysis(self, page):
-        self.analysis_label = ttk.Label(page, text="", foreground="#65786b", wraplength=930)
-        self.analysis_label.pack(anchor="w", pady=(0, 15))
-        notebook = ttk.Notebook(page)
-        notebook.pack(fill="both", expand=True)
-        self.rank_trees = {}
-        cols = (("name", "Responsable", 240), ("total", "Total", 85), ("pending", "Pendientes", 100),
-                (STATUSES[0], "En proceso", 105), (STATUSES[1], "En resguardo", 115),
-                (STATUSES[2], "Terminado", 100), (STATUSES[3], "Entregados", 100))
-        for field, label in (("operator", "Por operador"), ("client", "Por cliente")):
-            panel = ttk.Frame(notebook, padding=12)
-            notebook.add(panel, text=label)
-            ttk.Label(panel, text="Ordenados por pendientes y después por total. Doble clic para consultar sus pedidos.", foreground="#6d8076").pack(anchor="w", pady=(0, 12))
-            tree = self.make_tree(panel, tuple((f, ("Operador" if field == "operator" else "Cliente") if f == "name" else l, w) for f, l, w in cols))
-            tree.bind("<Double-1>", lambda e, f=field: self.filter_rank(f))
-            self.rank_trees[field] = tree
-        panel = ttk.Frame(notebook, padding=12)
-        notebook.add(panel, text="Entregas por día")
-        ttk.Label(panel, text="Pedidos que actualmente están entregados, agrupados por su fecha de entrega (Ciudad de México).", foreground="#6d8076", wraplength=850).pack(anchor="w", pady=(0, 12))
-        self.delivery_tree = self.make_tree(panel, (("date", "Fecha de entrega", 230), ("count", "Pedidos entregados", 180)))
-
     def build_settings(self, page):
         canvas = tk.Canvas(page, highlightthickness=0)
         scrollbar = ttk.Scrollbar(page, orient="vertical", command=canvas.yview)
         scrollbar.pack(side="right", fill="y")
         canvas.pack(side="left", fill="both", expand=True)
         canvas.configure(yscrollcommand=scrollbar.set, background=self.style.colors.bg)
+        self.canvas_surfaces.append((canvas, "bg"))
         inner = ttk.Frame(canvas, padding=(0, 0, 12, 10))
         inner_id = canvas.create_window((0, 0), window=inner, anchor="nw")
         inner.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
@@ -225,7 +224,7 @@ class Application(ttk.Window):
         self.bind_all("<MouseWheel>", lambda event: canvas.yview_scroll(-int(event.delta / 120), "units") if self.page_name == "settings" else None, add="+")
         page = inner
         ttk.Label(page, text="Conexión con GitHub", style="Section.TLabel").pack(anchor="w", pady=(0, 4))
-        ttk.Label(page, text="La subida reemplaza la vista publicada con todos los pedidos de esta base. Los filtros no limitan la subida.", foreground="#6d8076", wraplength=920).pack(anchor="w", pady=(0, 13))
+        ttk.Label(page, text="La subida reemplaza la vista publicada con todos los pedidos de esta base. Los filtros no limitan la subida.", style="Muted.TLabel", wraplength=920).pack(anchor="w", pady=(0, 13))
         self.repo_var = tk.StringVar(value=self.settings["repository"])
         self.branch_var = tk.StringVar(value=self.settings["branch"])
         self.url_var = tk.StringVar(value=self.settings["dashboard_url"])
@@ -238,37 +237,46 @@ class Application(ttk.Window):
             ttk.Entry(form, textvariable=var, show="●" if i == 3 else "", width=64).grid(row=i, column=1, sticky="ew", pady=7)
         self.remember_var = tk.BooleanVar(value=bool(self.settings.get("token_encrypted")))
         ttk.Checkbutton(page, text="Recordar token en esta cuenta de Windows (cifrado)", variable=self.remember_var, bootstyle="success-round-toggle").pack(anchor="w", pady=(10, 5))
-        ttk.Label(page, text="Crea un token de acceso específico para PRODUDASH1 con permiso Contents: Read and write.\nEl token se introduce aquí; no lo envíes por chat. Nunca se publica en el repositorio.", foreground="#6d8076", wraplength=900).pack(anchor="w", pady=(0, 8))
+        ttk.Label(page, text="Crea un token de acceso específico para PRODUDASH1 con permiso Contents: Read and write.\nEl token se introduce aquí; no lo envíes por chat. Nunca se publica en el repositorio.", style="Muted.TLabel", wraplength=900).pack(anchor="w", pady=(0, 8))
         self.replace_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(page, text="Permitir sustituir datos de otra base en la próxima subida", variable=self.replace_var, bootstyle="warning-round-toggle").pack(anchor="w", pady=(4, 5))
-        ttk.Label(page, text="Repositorio público: ticket, cliente, operador, estatus y fechas serán visibles en Internet. Las observaciones permanecen en la base local.", foreground="#a16221", wraplength=900).pack(anchor="w", pady=(0, 10))
+        ttk.Label(page, text="Repositorio público: ticket, cliente, operador, estatus y fechas serán visibles en Internet. Las observaciones permanecen en la base local.", style="Warning.TLabel", wraplength=900).pack(anchor="w", pady=(0, 10))
         buttons = ttk.Frame(page)
         buttons.pack(fill="x")
         ttk.Button(buttons, text="Guardar configuración", bootstyle="success", command=self.save_config).pack(side="left")
-        ttk.Button(buttons, text="Crear token ↗", bootstyle="dark-outline", command=lambda: webbrowser.open("https://github.com/settings/personal-access-tokens/new")).pack(side="left", padx=10)
+        ttk.Button(buttons, text="Crear token ↗", bootstyle="secondary-outline", command=lambda: webbrowser.open("https://github.com/settings/personal-access-tokens/new")).pack(side="left", padx=10)
         ttk.Separator(page).pack(fill="x", pady=20)
         ttk.Label(page, text="Base de datos y respaldos", style="Section.TLabel").pack(anchor="w")
-        self.db_label = ttk.Label(page, text=str(self.db.path), foreground="#6d8076", wraplength=910)
+        self.db_label = ttk.Label(page, text=str(self.db.path), style="Muted.TLabel", wraplength=910)
         self.db_label.pack(anchor="w", pady=(6, 12))
         buttons = ttk.Frame(page)
         buttons.pack(fill="x")
-        ttk.Button(buttons, text="Crear respaldo .db", bootstyle="dark-outline", command=self.backup).pack(side="left")
-        ttk.Button(buttons, text="Abrir otra base .db", bootstyle="dark-outline", command=self.switch_db).pack(side="left", padx=10)
-        ttk.Label(page, text="Pendientes = en proceso + en resguardo + terminados sin entregar.\nCada ticket es único; el historial conserva los cambios. Para corregir un pedido, edítalo.", foreground="#6d8076", wraplength=900).pack(anchor="w", pady=(15, 0))
+        ttk.Button(buttons, text="Crear respaldo .db", bootstyle="secondary-outline", command=self.backup).pack(side="left")
+        ttk.Button(buttons, text="Abrir otra base .db", bootstyle="secondary-outline", command=self.switch_db).pack(side="left", padx=10)
+        ttk.Separator(page).pack(fill="x", pady=20)
+        ttk.Label(page, text="Protección del borrado", style="Section.TLabel").pack(anchor="w")
+        self.password_label = ttk.Label(page, text="", style="Muted.TLabel", wraplength=890)
+        self.password_label.pack(anchor="w", pady=(6, 10))
+        self.password_button = ttk.Button(page, text="Crear contraseña", bootstyle="secondary-outline", command=self.configure_delete_password)
+        self.password_button.pack(anchor="w")
+        ttk.Label(page, text="Pendientes = en proceso + en resguardo + terminados sin entregar.\nCada ticket es único; el historial conserva los cambios. Para corregir un pedido, edítalo.", style="Muted.TLabel", wraplength=900).pack(anchor="w", pady=(15, 0))
 
     def show_page(self, name):
         self.page_name = name
         for key, page in self.pages.items():
             page.pack_forget()
-            self.nav[key].configure(bg="#2b5347" if key == name else "#173b35")
+            self.nav[key].configure(bg="#2c5b47" if key == name else self.palette["sidebar"])
         self.pages[name].pack(fill="both", expand=True)
         title, subtitle = {"orders": ("Pedidos de producción", "Registra, localiza y da seguimiento a cada pedido."),
                            "analysis": ("Carga y entregas", "Consulta quién concentra más pedidos y cuántos faltan por entregar."),
+                           "deleted": ("Registro de borrados", "Consulta qué se borró, cuándo, quién lo hizo y por qué."),
                            "settings": ("Configuración", "Conecta el dashboard y administra tus respaldos.")}[name]
         self.title_label.configure(text=title)
         self.subtitle.configure(text=subtitle)
         if name == "analysis":
             self.refresh()
+        elif name == "deleted":
+            self.refresh_deleted()
 
     def schedule_search(self):
         if self.search_job:
@@ -295,27 +303,32 @@ class Application(ttk.Window):
         values = summary(self.rows)
         for key, widget in self.kpis.items():
             widget.configure(text=str(values[key]))
+            self.kpi_notes[key].configure(text="Vista filtrada" if key == "total" else
+                f"{round(values[key] / values['total'] * 100) if values['total'] else 0}% del total")
         self.operator_combo.configure(values=("Todos", *self.db.names("operator")))
         self.draw_orders()
-        total = self.db.conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
+        total = self.db.conn.execute("SELECT COUNT(*) FROM orders WHERE deleted_at IS NULL").fetchone()[0]
         self.result_label.configure(text=(f"{len(self.rows)} de {total} pedidos · Pendientes = proceso + resguardo + terminados sin entregar."
-                                         if total else "Base vacía. Haz clic en + Nuevo pedido para registrar el primero."), foreground="#6b7e71")
+                                         if total else "Sin pedidos activos. Haz clic en + Nuevo pedido para registrar uno."), foreground=self.palette["muted"])
         for field, tree in self.rank_trees.items():
             tree.delete(*tree.get_children())
-            for row in ranking(self.rows, field):
-                tree.insert("", "end", values=(row["name"], row["total"], row["pending"], *(row[s] for s in STATUSES)))
+            for index, row in enumerate(ranking(self.rows, field)):
+                tree.insert("", "end", tags=("odd" if index % 2 else "even",), values=(row["name"], row["total"], row["pending"], *(row[s] for s in STATUSES)))
         daily = {}
         for row in self.rows:
             if row["status"] == STATUSES[3] and row["delivered_at"]:
                 date = local_datetime(row["delivered_at"]).date().isoformat()
                 daily[date] = daily.get(date, 0) + 1
         self.delivery_tree.delete(*self.delivery_tree.get_children())
-        for date in sorted(daily, reverse=True):
-            self.delivery_tree.insert("", "end", values=(date, daily[date]))
+        for index, date in enumerate(sorted(daily, reverse=True)):
+            self.delivery_tree.insert("", "end", tags=("odd" if index % 2 else "even",), values=(date, daily[date]))
         leaders = ranking(self.rows, "operator")
         lead = max(leaders, key=lambda r: r["total"]) if leaders else None
         self.analysis_label.configure(text=f"Vista actual: {values['total']} pedidos · {values['pending']} pendientes · {values[STATUSES[3]]} entregados. " +
                                       (f"Mayor total: {lead['name']} ({lead['total']})." if lead else "Registra pedidos para ver el análisis."))
+        self.render_analysis(values, lead)
+        self.refresh_deleted()
+        self.update_password_label()
         revision = int(self.db.meta("revision"))
         published = int(self.db.meta("published_revision") or "-1")
         published_at = self.db.meta("published_at")
@@ -329,10 +342,15 @@ class Application(ttk.Window):
         keep = selected[0] if selected else None
         self.order_tree.delete(*self.order_tree.get_children())
         rows = sorted(self.rows, key=lambda r: str(r[self.sort_key]).casefold(), reverse=self.sort_reverse) if self.sort_key else self.rows
-        for row in rows:
-            self.order_tree.insert("", "end", iid=str(row["id"]), values=(row["ticket"], row["client"], row["operator"], row["status"], display_date(row["created_at"]), display_date(row["updated_at"])), tags=(row["status"],))
+        for index, row in enumerate(rows):
+            self.order_tree.insert("", "end", iid=str(row["id"]), values=(row["ticket"], row["client"], row["operator"],
+                ("✓ " if row["status"] == STATUSES[3] else "● ") + row["status"], display_date(row["created_at"]), display_date(row["updated_at"])),
+                tags=("odd" if index % 2 else "even",))
         if keep and self.order_tree.exists(keep):
             self.order_tree.selection_set(keep)
+        elif rows:
+            self.order_tree.selection_set(str(rows[0]["id"]))
+        self.render_order_detail()
 
     def sort_orders(self, field):
         self.sort_reverse = not self.sort_reverse if self.sort_key == field else False
@@ -370,13 +388,13 @@ class Application(ttk.Window):
         heading = ttk.Frame(box)
         heading.grid(row=0, column=0, sticky="ew", pady=(0, 14))
         ttk.Label(heading, text="Editar pedido" if row else "Registrar pedido", style="Section.TLabel").pack(anchor="w")
-        ttk.Label(heading, text=("Registro original: " + display_date(row["created_at"])) if row else "La fecha y hora se asignan automáticamente al guardar.", foreground="#6d8076", wraplength=500).pack(anchor="w", pady=(5, 0))
+        ttk.Label(heading, text=("Registro original: " + display_date(row["created_at"])) if row else "La fecha y hora se asignan automáticamente al guardar.", style="Muted.TLabel", wraplength=500).pack(anchor="w", pady=(5, 0))
         # Keep actions in a separate, fully sized row. The form can scroll on
         # small screens or with larger Windows text without clipping buttons.
         footer = ttk.Frame(box)
         footer.grid(row=2, column=0, sticky="ew", pady=(14, 0))
         ttk.Separator(footer).pack(fill="x", pady=(0, 8))
-        error = ttk.Label(footer, text="", foreground="#b45353", wraplength=500)
+        error = ttk.Label(footer, text="", foreground=self.palette["error"], wraplength=500)
         error.pack(anchor="w", fill="x", pady=(0, 8))
         buttons = ttk.Frame(footer)
         buttons.pack(fill="x")
@@ -413,7 +431,8 @@ class Application(ttk.Window):
             widget.pack(fill="x")
             entries.append(widget)
         ttk.Label(fields, text="Observaciones (opcionales, solo en la base local)", wraplength=490).pack(anchor="w", pady=(12, 5))
-        notes = tk.Text(fields, height=4, font=("Segoe UI", 10), relief="solid", bd=1, wrap="word")
+        notes = tk.Text(fields, height=4, font=("Segoe UI", 10), relief="solid", bd=1, wrap="word",
+                        background=self.palette["panel"], foreground=self.palette["text"], insertbackground=self.palette["text"])
         notes.pack(fill="x")
         if row:
             notes.insert("1.0", row["notes"])
@@ -426,7 +445,7 @@ class Application(ttk.Window):
                 return
             dialog.destroy()
             self.refresh()
-        cancel_button = ttk.Button(buttons, text="Cancelar", width=12, bootstyle="dark-outline", command=dialog.destroy)
+        cancel_button = ttk.Button(buttons, text="Cancelar", width=12, bootstyle="secondary-outline", command=dialog.destroy)
         cancel_button.grid(row=0, column=1, sticky="e", padx=(0, 10))
         save_button = ttk.Button(buttons, text="Guardar pedido", width=16, bootstyle="success", command=save)
         save_button.grid(row=0, column=2, sticky="e")
@@ -440,25 +459,40 @@ class Application(ttk.Window):
         order_id = self.selected_id()
         if order_id is None:
             return
-        row = self.db.get(order_id)
+        return self.show_order_history(order_id)
+
+    def show_order_history(self, order_id, include_deleted=False):
+        row = self.db.get(order_id, include_deleted=include_deleted)
         dialog = ttk.Toplevel(self)
         dialog.title(f"Historial · Ticket {row['ticket']}")
         dialog.geometry("760x540")
         dialog.transient(self)
-        text = tk.Text(dialog, wrap="word", font=("Segoe UI", 11), padx=20, pady=15)
+        text = tk.Text(dialog, wrap="word", font=("Segoe UI", 11), padx=20, pady=15,
+                       background=self.palette["panel"], foreground=self.palette["text"])
         scroll = ttk.Scrollbar(dialog, command=text.yview)
         scroll.pack(side="right", fill="y")
         text.configure(yscrollcommand=scroll.set)
         text.pack(fill="both", expand=True)
+        text.insert("end", f"TICKET #{row['ticket']}\nCliente: {row['client']}\nOperador: {row['operator']}\nEstatus: {row['status']}\n"
+                    f"Registro: {display_date(row['created_at'])}\n")
+        if row["deleted_at"]:
+            text.insert("end", f"\nBORRADO: {display_date(row['deleted_at'])}\nUsuario de Windows: {row['deleted_by']}\nMotivo: {row['deleted_reason']}\n")
+        if row["notes"]:
+            text.insert("end", f"Observaciones: {row['notes']}\n")
+        text.insert("end", "\nHISTORIAL DE CAMBIOS\n\n")
         for event in self.db.history(order_id):
             before = json.loads(event["before_json"]) if event["before_json"] else {}
             after = json.loads(event["after_json"])
             text.insert("end", f"{display_date(event['changed_at'])} · {event['action']}\n")
-            for key, label in (("ticket", "Ticket"), ("client", "Cliente"), ("operator", "Operador"), ("status", "Estatus"), ("notes", "Observaciones")):
-                if before.get(key) != after[key]:
-                    text.insert("end", f"  {label}: {before.get(key, '—')} → {after[key]}\n")
+            for key, label in (("ticket", "Ticket"), ("client", "Cliente"), ("operator", "Operador"), ("status", "Estatus"),
+                               ("notes", "Observaciones"), ("deleted_at", "Fecha de borrado"), ("deleted_by", "Usuario"), ("deleted_reason", "Motivo")):
+                if before.get(key) != after.get(key):
+                    value = display_date(after.get(key)) if key == "deleted_at" else after.get(key, "—")
+                    text.insert("end", f"  {label}: {before.get(key) or '—'} → {value}\n")
             text.insert("end", "\n")
         text.configure(state="disabled")
+        dialog.bind("<Escape>", lambda event: dialog.destroy())
+        return dialog, text
 
     def filter_rank(self, field):
         tree = self.rank_trees[field]
@@ -483,7 +517,7 @@ class Application(ttk.Window):
         if path:
             try:
                 self.db.backup(path)
-                messagebox.showinfo("Respaldo listo", "Se guardó una copia completa con pedidos e historial.", parent=self)
+                messagebox.showinfo("Respaldo listo", "Se guardó una copia completa con pedidos, historial, borrados y protección del borrado.", parent=self)
             except ValueError as exc:
                 messagebox.showerror("Respaldo", str(exc), parent=self)
 
@@ -613,6 +647,11 @@ def main():
             db.save("TEST-001", "Cliente de prueba", "Operador de prueba", STATUSES[3], order_id=order_id)
             assert summary(db.search())[STATUSES[3]] == 1
             assert db.snapshot()["orders"][0]["status"] == STATUSES[3]
+            db.set_delete_password("Prueba-temporal-1")
+            db.delete(order_id, "Prueba-temporal-1", "Prueba del ejecutable", "self-test")
+            assert not db.search() and not db.snapshot()["orders"]
+            assert db.deleted()[0]["deleted_reason"] == "Prueba del ejecutable"
+            assert db.history(order_id)[0]["action"] == "Borrado"
             db.close()
         return
     SETTINGS_DIR.mkdir(parents=True, exist_ok=True)

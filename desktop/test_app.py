@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 import io
+import sqlite3
 import urllib.error
 from unittest.mock import patch
 from pathlib import Path
@@ -138,6 +139,149 @@ class StorageTests(unittest.TestCase):
             rows = list(csv.reader(f))
         self.assertEqual(rows[1][0], "'=1+1")
         self.assertEqual(rows[1][1], "'+formula")
+
+
+class DeletionTests(unittest.TestCase):
+    password = "Prueba-borrado-123"
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.db = Database(Path(self.temp.name) / "pedidos.db")
+        self.order_id = self.db.save("T-01", "Cliente", "José", notes="Nota conservada")
+
+    def tearDown(self):
+        self.db.close()
+        self.temp.cleanup()
+
+    def test_first_password_setup_and_rotation(self):
+        self.assertFalse(self.db.password_configured())
+        for password in ("corta", "        "):
+            with self.assertRaises(ValueError):
+                self.db.set_delete_password(password)
+        self.db.set_delete_password(self.password)
+        record = self.db.meta("delete_password")
+        self.assertNotIn(self.password, record)
+        self.assertTrue(self.db.verify_delete_password(self.password))
+        with self.assertRaises(ValueError):
+            self.db.set_delete_password("Otra-contraseña", "equivocada")
+        self.assertEqual(record, self.db.meta("delete_password"))
+        self.db.set_delete_password("Otra-contraseña", self.password)
+        self.assertFalse(self.db.verify_delete_password(self.password))
+        self.assertTrue(self.db.verify_delete_password("Otra-contraseña"))
+        self.assertEqual(self.db.meta("revision"), "1")
+
+    def test_rejected_deletions_preserve_orders_history_revision(self):
+        with self.assertRaises(ValueError):
+            self.db.delete(self.order_id, self.password, "Duplicado", "QA")
+        self.db.set_delete_password(self.password)
+        for password, reason in (("incorrecta", "Duplicado"), (self.password, "  "), (self.password, "a"), (self.password, "x"*1001)):
+            with self.assertRaises(ValueError):
+                self.db.delete(self.order_id, password, reason, "QA")
+        self.assertEqual(len(self.db.search()), 1)
+        self.assertEqual(len(self.db.history(self.order_id)), 1)
+        self.assertEqual(self.db.meta("revision"), "1")
+        self.assertEqual(self.db.deleted(), [])
+
+    def test_delete_audit_counts_and_snapshot(self):
+        self.db.set_delete_password(self.password)
+        delivered_id = self.db.save("T-02", "Otro cliente", "Ana", STATUSES[3])
+        before = self.db.get(self.order_id)
+        deleted = self.db.delete(self.order_id, self.password, "  Captura duplicada  ", "QA Windows", before["updated_at"])
+        self.assertEqual(deleted["deleted_reason"], "Captura duplicada")
+        self.assertEqual(deleted["deleted_by"], "QA Windows")
+        self.assertEqual(deleted["notes"], before["notes"])
+        self.assertEqual(deleted["created_at"], before["created_at"])
+        self.assertTrue(deleted["deleted_at"])
+        self.assertEqual(self.db.meta("revision"), "3")
+        self.assertEqual(summary(self.db.search())["total"], 1)
+        self.assertEqual(summary(self.db.search())["pending"], 0)
+        self.assertEqual(self.db.names("operator"), ["Ana"])
+        self.assertEqual([r["id"] for r in self.db.search()], [delivered_id])
+        event = self.db.history(self.order_id)[0]
+        self.assertEqual(event["action"], "Borrado")
+        self.assertEqual(json.loads(event["before_json"]), before)
+        self.assertEqual(json.loads(event["after_json"]), deleted)
+        self.assertNotIn(self.password, event["after_json"])
+        self.assertEqual(len(self.db.deleted("jose")), 1)
+        self.assertEqual(len(self.db.deleted("duplicada")), 1)
+        self.assertEqual(len(self.db.deleted("qa windows")), 1)
+        snapshot = self.db.snapshot()
+        self.assertEqual([r["id"] for r in snapshot["orders"]], ["T-02"])
+        self.assertEqual(snapshot["meta"]["revision"], 3)
+        for secret in ("Captura duplicada", "QA Windows", "delete_password", self.password):
+            self.assertNotIn(secret, json.dumps(snapshot))
+        with self.assertRaises(ValueError):
+            self.db.get(self.order_id)
+        with self.assertRaises(ValueError):
+            self.db.save("T-01", "Cliente", "José", order_id=self.order_id)
+        with self.assertRaises(ValueError):
+            self.db.delete(self.order_id, self.password, "De nuevo", "QA")
+        self.assertEqual(self.db.meta("revision"), "3")
+
+    def test_stale_deletion_rejected(self):
+        self.db.set_delete_password(self.password)
+        before = self.db.get(self.order_id)
+        other = Database(self.db.path)
+        try:
+            other.save("T-01", "Cliente", "Ana", STATUSES[2], order_id=self.order_id)
+            with self.assertRaises(ValueError):
+                self.db.delete(self.order_id, self.password, "Duplicado", "QA", before["updated_at"])
+            self.assertEqual(self.db.get(self.order_id)["operator"], "Ana")
+            self.assertEqual(self.db.deleted(), [])
+            self.assertEqual(self.db.meta("revision"), "2")
+        finally:
+            other.close()
+
+    def test_backup_preserves_password_and_deletions(self):
+        self.db.set_delete_password(self.password)
+        self.db.delete(self.order_id, self.password, "Cancelado por cliente", "QA")
+        target = Path(self.temp.name) / "respaldo.db"
+        self.db.backup(target)
+        copy = Database(target)
+        try:
+            self.assertTrue(copy.verify_delete_password(self.password))
+            self.assertEqual(copy.deleted(), self.db.deleted())
+            self.assertEqual(copy.history(self.order_id), self.db.history(self.order_id))
+        finally:
+            copy.close()
+
+    def test_version_one_migration_preserves_records_and_backup(self):
+        target = Path(self.temp.name) / "version1.db"
+        conn = sqlite3.connect(target)
+        conn.executescript("""
+            CREATE TABLE orders (id INTEGER PRIMARY KEY, ticket TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                client TEXT NOT NULL, operator TEXT NOT NULL, status TEXT NOT NULL,
+                notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, delivered_at TEXT);
+            CREATE TABLE history (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL REFERENCES orders(id),
+                changed_at TEXT NOT NULL, action TEXT NOT NULL, before_json TEXT, after_json TEXT NOT NULL);
+            CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO metadata VALUES ('database_id','conservar-identidad'),('revision','7'),('published_revision','6');
+            INSERT INTO orders VALUES (42,'00123','Cliente real','Operador real','Terminado','Nota anterior',
+                '2026-10-08T15:00:00+00:00','2026-10-08T16:00:00+00:00',NULL);
+            INSERT INTO history VALUES (9,42,'2026-10-08T15:00:00+00:00','Registro',NULL,'{"ticket":"00123"}');
+            PRAGMA user_version=1;
+        """)
+        conn.close()
+        copy = Database(target)
+        try:
+            self.assertEqual(copy.meta("database_id"), "conservar-identidad")
+            self.assertEqual(copy.meta("revision"), "7")
+            self.assertEqual(copy.meta("published_revision"), "6")
+            self.assertEqual(copy.get(42)["notes"], "Nota anterior")
+            self.assertEqual(copy.history(42)[0]["id"], 9)
+            self.assertEqual(copy.deleted(), [])
+            backup = sqlite3.connect(copy.migration_backup)
+            try:
+                self.assertEqual(backup.execute("PRAGMA user_version").fetchone()[0], 1)
+                self.assertEqual(backup.execute("SELECT ticket FROM orders WHERE id=42").fetchone()[0], "00123")
+            finally:
+                backup.close()
+        finally:
+            copy.close()
+        copy = Database(target)
+        self.assertIsNone(copy.migration_backup)
+        copy.close()
+        self.assertEqual(len(list(target.parent.glob("version1_respaldo_antes_1_1_*.db"))), 1)
 
 
 class SyncTests(unittest.TestCase):

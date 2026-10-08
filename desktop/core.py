@@ -1,7 +1,10 @@
 """SQLite storage and dashboard export for PRODU Control."""
 from __future__ import annotations
 import csv
+import hashlib
+import hmac
 import json
+import secrets
 import sqlite3
 import unicodedata
 import uuid
@@ -64,9 +67,15 @@ class Database:
         self.conn.execute("PRAGMA foreign_keys = ON")
         version = self.conn.execute("PRAGMA user_version").fetchone()[0]
         existing = self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        if version not in (0, 1) or (existing and not any(r[0] == "orders" for r in existing)):
+        if version not in (0, 1, 2) or (existing and not any(r[0] == "orders" for r in existing)):
             self.conn.close()
             raise ValueError("El archivo elegido no es una base de PRODU Control compatible.")
+        self.migration_backup = None
+        if version == 1:
+            self.migration_backup = self.path.with_name(
+                f"{self.path.stem}_respaldo_antes_1_1_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.db")
+            with closing(sqlite3.connect(self.migration_backup)) as target:
+                self.conn.backup(target)
         self.conn.executescript("""
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY, ticket TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -74,7 +83,9 @@ class Database:
                 status TEXT NOT NULL CHECK(status IN
                     ('En proceso','En resguardo','Terminado','Entregado a cliente')),
                 notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL, delivered_at TEXT
+                updated_at TEXT NOT NULL, delivered_at TEXT,
+                deleted_at TEXT, deleted_reason TEXT NOT NULL DEFAULT '',
+                deleted_by TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS history (
                 id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL REFERENCES orders(id),
@@ -84,9 +95,16 @@ class Database:
             CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS orders_status_idx ON orders(status);
             CREATE INDEX IF NOT EXISTS history_order_idx ON history(order_id);
-            PRAGMA user_version = 1;
         """)
         with self.conn:
+            columns = {r[1] for r in self.conn.execute("PRAGMA table_info(orders)")}
+            for field, definition in (("deleted_at", "TEXT"),
+                                      ("deleted_reason", "TEXT NOT NULL DEFAULT ''"),
+                                      ("deleted_by", "TEXT NOT NULL DEFAULT ''")):
+                if field not in columns:
+                    self.conn.execute(f"ALTER TABLE orders ADD COLUMN {field} {definition}")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS orders_deleted_idx ON orders(deleted_at)")
+            self.conn.execute("PRAGMA user_version = 2")
             self.conn.execute("INSERT OR IGNORE INTO metadata VALUES ('database_id', ?)", (str(uuid.uuid4()),))
             self.conn.execute("INSERT OR IGNORE INTO metadata VALUES ('revision', '0')")
         self.conn.execute("PRAGMA journal_mode = WAL")
@@ -102,11 +120,77 @@ class Database:
         with self.conn:
             self.conn.execute("INSERT OR REPLACE INTO metadata VALUES (?,?)", (key, str(value)))
 
-    def get(self, order_id):
-        r = self.conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+    def get(self, order_id, include_deleted=False):
+        sql = "SELECT * FROM orders WHERE id=?" + ("" if include_deleted else " AND deleted_at IS NULL")
+        r = self.conn.execute(sql, (order_id,)).fetchone()
         if r is None:
             raise ValueError("El pedido ya no está disponible.")
         return dict(r)
+
+    def password_configured(self):
+        return bool(self.meta("delete_password"))
+
+    def verify_delete_password(self, password):
+        raw = self.meta("delete_password")
+        if not raw:
+            raise ValueError("Define primero la contraseña de borrado.")
+        if not isinstance(password, str) or not 1 <= len(password) <= 256:
+            return False
+        try:
+            record = json.loads(raw)
+            if record.get("algorithm") != "pbkdf2-sha256" or not 100000 <= int(record["iterations"]) <= 2000000:
+                raise ValueError
+            actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"),
+                                         bytes.fromhex(record["salt"]), int(record["iterations"])).hex()
+            return hmac.compare_digest(actual, record["digest"])
+        except (ValueError, KeyError, TypeError):
+            raise ValueError("La configuración de la contraseña no es compatible.") from None
+
+    def set_delete_password(self, password, current_password=None):
+        if not isinstance(password, str) or not 8 <= len(password) <= 256:
+            raise ValueError("La contraseña debe tener entre 8 y 256 caracteres.")
+        if not password.strip():
+            raise ValueError("La contraseña no puede contener solamente espacios.")
+        with self.conn:
+            self.conn.execute("BEGIN IMMEDIATE")
+            if self.password_configured() and not self.verify_delete_password(current_password):
+                raise ValueError("La contraseña actual es incorrecta.")
+            salt = secrets.token_bytes(32)
+            digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 600000).hex()
+            record = {"algorithm": "pbkdf2-sha256", "iterations": 600000,
+                      "salt": salt.hex(), "digest": digest}
+            self.conn.execute("INSERT OR REPLACE INTO metadata VALUES ('delete_password', ?)",
+                              (json.dumps(record),))
+
+    def delete(self, order_id, password, reason, deleted_by, expected_updated=None):
+        reason, deleted_by = str(reason).strip(), str(deleted_by).strip()
+        if not 3 <= len(reason) <= 1000:
+            raise ValueError("Escribe el motivo del borrado (entre 3 y 1000 caracteres).")
+        if not deleted_by or len(deleted_by) > 160:
+            raise ValueError("No se pudo identificar al usuario del borrado.")
+        with self.conn:
+            self.conn.execute("BEGIN IMMEDIATE")
+            if not self.verify_delete_password(password):
+                raise ValueError("Contraseña incorrecta. El pedido no se borró.")
+            before = self.get(order_id)
+            if expected_updated and before["updated_at"] != expected_updated:
+                raise ValueError("Otra sesión modificó este pedido. Revisa sus datos antes de borrarlo.")
+            stamp = now()
+            self.conn.execute("UPDATE orders SET deleted_at=?,deleted_reason=?,deleted_by=?,updated_at=? WHERE id=?",
+                              (stamp, reason, deleted_by, stamp, order_id))
+            after = self.get(order_id, include_deleted=True)
+            self.conn.execute("INSERT INTO history(order_id,changed_at,action,before_json,after_json) VALUES(?,?,?,?,?)",
+                              (order_id, stamp, "Borrado", json.dumps(before, ensure_ascii=False),
+                               json.dumps(after, ensure_ascii=False)))
+            self.conn.execute("UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
+        return after
+
+    def deleted(self, query=""):
+        q = normalized(query)
+        rows = [dict(r) for r in self.conn.execute(
+            "SELECT * FROM orders WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC,id DESC")]
+        return [r for r in rows if not q or q in normalized(" ".join(str(r[k]) for k in
+                ("ticket", "client", "operator", "deleted_reason", "deleted_by")))]
 
     def save(self, ticket, client, operator, status=STATUSES[0], notes="", order_id=None, expected_updated=None):
         fields = {"ticket": str(ticket).strip(), "client": str(client).strip(),
@@ -149,7 +233,7 @@ class Database:
                 self.conn.execute("UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
         except sqlite3.IntegrityError as exc:
             if "orders.ticket" in str(exc):
-                raise ValueError("Ese ticket ya está registrado. Busca el pedido para actualizarlo.") from None
+                raise ValueError("Ese ticket ya está registrado. Consúltalo en Pedidos o Borrados; cada ticket es único.") from None
             raise
         return order_id
 
@@ -158,7 +242,7 @@ class Database:
         validate_date(date_to)
         if date_from and date_to and date_from > date_to:
             raise ValueError("La fecha inicial no puede ser mayor que la final.")
-        rows = [dict(r) for r in self.conn.execute("SELECT * FROM orders ORDER BY created_at DESC,id DESC")]
+        rows = [dict(r) for r in self.conn.execute("SELECT * FROM orders WHERE deleted_at IS NULL ORDER BY created_at DESC,id DESC")]
         q = normalized(query)
         return [r for r in rows
                 if (not q or q in normalized(" ".join(str(r[k]) for k in ("ticket", "client", "operator", "notes"))))
@@ -171,7 +255,7 @@ class Database:
         if field not in ("operator", "client"):
             raise ValueError("Campo inválido.")
         names = {}
-        for r in self.conn.execute(f"SELECT {field} FROM orders ORDER BY id"):
+        for r in self.conn.execute(f"SELECT {field} FROM orders WHERE deleted_at IS NULL ORDER BY id"):
             names.setdefault(normalized(r[0]), r[0])
         return sorted(names.values(), key=normalized)
 
