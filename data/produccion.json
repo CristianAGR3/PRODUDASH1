@@ -1,13 +1,13 @@
 {
   "meta": {
     "schemaVersion": 4,
-    "generatedAt": "2026-10-08T21:50:41.423468+00:00",
+    "generatedAt": "2026-10-08T21:51:22.944436+00:00",
     "source": "SQLite · PRODU Control",
-    "sourceModifiedAt": "2026-10-08T21:50:38.205054+00:00",
+    "sourceModifiedAt": "2026-10-08T21:51:21.444721+00:00",
     "lastRecordAt": "2026-10-08T21:50:38.205054+00:00",
     "totalOrders": 1,
     "databaseId": "1b75a661-d3bf-44de-afd7-8596f1a5b90d",
-    "revision": 1
+    "revision": 2
   },
   "orders": [
     {
@@ -15,21 +15,21 @@
       "ticket": "44654",
       "client": "rgthg",
       "operator": "JOAN",
-      "status": "En resguardo",
+      "status": "Entregado a cliente",
       "created_at": "2026-10-08T21:50:38.205054+00:00",
-      "updated_at": "2026-10-08T21:50:38.205054+00:00",
-      "delivered_at": null,
+      "updated_at": "2026-10-08T21:51:21.444721+00:00",
+      "delivered_at": "2026-10-08T21:51:21.444721+00:00",
       "cutter": "JOAN",
       "movement": "Producción",
-      "production": "EN RESGUARDO",
-      "delivery": "PENDIENTE",
+      "production": "TERMINADO",
+      "delivery": "ENTREGADO",
       "receiver": "SIN REGISTRO",
       "driver": null,
       "date": "08/10/2026",
       "time": "15:50",
       "recordAt": "2026-10-08T15:50:38.205054-06:00",
-      "updatedAt": "2026-10-08T21:50:38.205054+00:00",
-      "deliveredAt": null
+      "updatedAt": "2026-10-08T21:51:21.444721+00:00",
+      "deliveredAt": "2026-10-08T21:51:21.444721+00:00"
     }
   ]
 }
