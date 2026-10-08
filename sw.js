@@ -1,10 +1,11 @@
-const CACHE_NAME = "produ-pwa-20260903-v14-tony-float-only";
+const CACHE_NAME = "produ-pwa-20261008-v15-sqlite";
 const CACHE_PREFIX = "produ-pwa-";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./orders-model.js",
   "./manifest.webmanifest",
   "./favicon.svg",
   "./icon-192.png",

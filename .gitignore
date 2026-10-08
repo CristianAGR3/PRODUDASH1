@@ -1,2 +1,12 @@
 Thumbs.db
 Desktop.ini
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+*.exe
+desktop/build/
+desktop/dist/
+desktop/*.spec
+desktop/produ.ico

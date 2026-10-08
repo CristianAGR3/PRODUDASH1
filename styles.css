@@ -2096,3 +2096,15 @@ html[data-theme="dark"] .tony-chat-form button { border-color:#b2391a; backgroun
   .tony-orbit[data-mood="listening"] .tony-float-state,
   .tony-chat-message.thinking i { animation:none; }
 }
+
+/* SQLite statuses */
+.kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.stage-en-proceso { color: #a56c23; background: #b783361a; }
+.stage-en-resguardo { color: #80629d; background: #80629d1a; }
+.stage-terminado { color: #3f7f63; background: #3f7f631a; }
+.stage-entregado-a-cliente { color: #557aa4; background: #557aa41a; }
+.chart-stage-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.legend-swatch.pickup { background: #b78336; }
+.legend-swatch.shipment { background: #80629d; }
+[hidden] { display: none !important; }
+@media (max-width: 620px) { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .chart-stage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

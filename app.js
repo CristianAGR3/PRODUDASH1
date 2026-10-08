@@ -1,3 +1,4 @@
+const orderModel = window.ProduOrders;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -10,22 +11,25 @@ const MODULES = {
   search: {
     eyebrow: "CONSULTA",
     title: "Buscador avanzado",
-    subtitle: "Filtra por cliente, pedido, movimiento, estado, cortador o fecha.",
+    subtitle: "Filtra por cliente, ticket, estatus, operador o fecha.",
   },
   cutters: {
     eyebrow: "PRODUCCIÓN",
-    title: "Cortadores",
+    title: "Operadores",
     subtitle: "Avance, carga de trabajo y pedidos terminados por responsable.",
   },
   charts: {
     eyebrow: "ANÁLISIS",
-    title: "Gráficas de cortadores",
+    title: "Gráficas de operadores",
     subtitle: "Distribución de pedidos y estado operativo por responsable.",
   },
 };
 
 const CHART_COLORS = ["#3f7f63", "#b78336", "#8f3630", "#557aa4", "#80629d", "#4f9698", "#bc6d45", "#728048"];
 const DATA_REFRESH_INTERVAL = 30000;
+const DATA_URL = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname)
+  ? "data/produccion.json"
+  : "https://raw.githubusercontent.com/CristianAGR3/PRODUDASH1/main/data/produccion.json";
 
 const state = {
   dataset: { meta: {}, orders: [] },
@@ -112,15 +116,15 @@ function movementValue(order) {
 }
 
 function isFinished(order) {
-  return normalize(order.production) === "terminado";
+  return ["Terminado", "Entregado a cliente"].includes(orderModel.status(order));
 }
 
 function isDelivered(order) {
-  return normalize(order.delivery) === "entregado";
+  return orderModel.status(order) === "Entregado a cliente";
 }
 
 function isQueuedForDelivery(order) {
-  return normalize(order.delivery) === "en fila";
+  return orderModel.status(order) === "En resguardo";
 }
 
 function isUnassignedCutter(value) {
@@ -128,11 +132,16 @@ function isUnassignedCutter(value) {
 }
 
 function productionValue(order) {
-  return isFinished(order) ? "TERMINADO" : "EN PROCESO";
+  return orderModel.status(order).toUpperCase();
 }
 
 function orderDate(order) {
-  return String(order.recordAt || "").slice(0, 10);
+  if (!order.recordAt) return "";
+  const date = new Date(order.recordAt);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const part = type => parts.find(p => p.type === type).value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 function filteredOrders() {
@@ -142,95 +151,78 @@ function filteredOrders() {
     const searchable = `${order.id} ${order.client} ${order.cutter} ${order.receiver} ${order.driver || ""}`;
     return (!query || normalize(searchable).includes(query))
       && (state.movement === "Todos" || movementValue(order) === state.movement)
-      && (state.cutter === "Todos" || order.cutter === state.cutter)
+      && (state.cutter === "Todos" || normalize(order.cutter) === normalize(state.cutter))
       && (state.production === "Todos" || productionValue(order) === state.production)
       && (!state.dateFrom || (date && date >= state.dateFrom))
       && (!state.dateTo || (date && date <= state.dateTo));
   });
 }
 
-function metrics(orders) {
-  const total = orders.length;
-  const pickup = orders.filter(isCr).length;
-  const shipments = orders.filter((order) => movementValue(order) === "Envío producción").length;
-  const finished = orders.filter(isFinished).length;
-  const delivered = orders.filter((order) => normalize(order.delivery) === "entregado").length;
-  return { total, pickup, shipments, finished, delivered };
-}
+function metrics(orders) { return orderModel.metrics(orders); }
 
 function renderHeader() {
   const meta = state.dataset.meta;
-  $("#updatedAt").textContent = formatTimestamp(meta.generatedAt || meta.sourceModifiedAt);
-  $("#sourceName").textContent = `${meta.source || "PRODUCCION.xlsm"} · GitHub`;
-  $("#footerMeta").textContent = `JSON desde ${meta.source || "PRODUCCION.xlsm"} · Excel guardado ${formatTimestamp(meta.sourceModifiedAt)}`;
+  $("#updatedAt").textContent = formatTimestamp(meta.generatedAt);
+  $("#sourceName").textContent = "SQLite · GitHub";
+  $("#footerMeta").textContent = `PRODU Control · ${meta.totalOrders || 0} pedidos · revisión ${meta.revision || 0}`;
 }
 
 function renderFilterOptions() {
   const select = $("#cutterFilter");
   const current = state.cutter;
   const cutters = unique(state.dataset.orders.map((order) => order.cutter));
-  select.innerHTML = `<option value="Todos">Todos los cortadores</option>${cutters.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
+  select.innerHTML = `<option value="Todos">Todos los operadores</option>${cutters.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
   select.value = cutters.includes(current) ? current : "Todos";
   if (!cutters.includes(current)) state.cutter = "Todos";
 }
 
 function renderAdvancedCounts() {
-  const count = (movement, production) => state.dataset.orders.filter((order) => movementValue(order) === movement && productionValue(order) === production).length;
-  $("#advancedCrFinished").textContent = count("CR", "TERMINADO");
-  $("#advancedCrProcess").textContent = count("CR", "EN PROCESO");
-  $("#advancedShipmentFinished").textContent = count("Envío producción", "TERMINADO");
-  $("#advancedShipmentProcess").textContent = count("Envío producción", "EN PROCESO");
-
-  $$(".advanced-status-grid button").forEach((button) => {
-    const selected = button.dataset.advancedMovement === state.movement && button.dataset.advancedStatus === state.production;
+  const values = metrics(state.dataset.orders);
+  $("#advancedCrFinished").textContent = values.process;
+  $("#advancedCrProcess").textContent = values.stored;
+  $("#advancedShipmentFinished").textContent = values.finished;
+  $("#advancedShipmentProcess").textContent = values.delivered;
+  $$(".advanced-status-grid button").forEach(button => {
+    const selected = button.dataset.advancedStatus === state.production;
     button.classList.toggle("selected", selected);
     button.setAttribute("aria-pressed", String(selected));
   });
 }
 
-function renderKpis(values) {
-  const pickupRate = values.total ? Math.round((values.pickup / values.total) * 100) : 0;
-  const completionRate = values.total ? Math.round((values.finished / values.total) * 100) : 0;
-  const shipmentRate = values.total ? Math.round((values.shipments / values.total) * 100) : 0;
-  const pendingDelivery = Math.max(values.total - values.delivered, 0);
-  const process = Math.max(values.total - values.finished, 0);
-
-  $("#kpiTotal").textContent = String(values.total).padStart(2, "0");
-  $("#kpiPickup").textContent = String(values.pickup).padStart(2, "0");
-  $("#kpiShipments").textContent = String(values.shipments).padStart(2, "0");
-  $("#kpiFinished").textContent = String(values.finished).padStart(2, "0");
-  $("#kpiDelivered").textContent = String(values.delivered).padStart(2, "0");
-  $("#kpiPickupNote").textContent = `${pickupRate}% del movimiento`;
-  $("#kpiFinishedNote").textContent = `${completionRate}% de avance`;
-  $("#kpiDeliveredNote").textContent = `${pendingDelivery} pendientes de entrega`;
-
-  $("#ordersCompletionBadge").textContent = `${completionRate}%`;
-  $("#ordersCompletionProgress span").style.width = `${completionRate}%`;
-  $("#ordersCompletionProgress").setAttribute("aria-label", `${completionRate}% de pedidos terminados`);
-  $("#ordersFinishedCopy").textContent = `${values.finished} terminados`;
-  $("#ordersProcessCopy").textContent = `${process} en proceso`;
-  $("#ordersFinishedStat").textContent = values.finished;
-  $("#ordersProcessStat").textContent = process;
-  $("#ordersDeliveredStat").textContent = values.delivered;
-
-  $("#completionBadge").textContent = `${completionRate}%`;
-  $("#completionProgress span").style.width = `${completionRate}%`;
-  $("#completionProgress").setAttribute("aria-label", `${completionRate}% de pedidos terminados`);
-  $("#finishedCopy").textContent = `${values.finished} terminados`;
-  $("#pendingCopy").textContent = `${process} en proceso`;
-
-  $("#routeCount").textContent = values.total;
-  $("#donutTotal").textContent = values.total;
-  $("#routeDonut").style.background = values.total
-    ? `conic-gradient(#8fd14f 0 ${pickupRate}%, #3db8d5 ${pickupRate}% 100%)`
-    : "conic-gradient(#d8ded8 0 100%)";
-  $("#routeDonut").setAttribute("aria-label", `${values.pickup} CR y ${values.shipments} envíos de producción`);
-  $("#pickupLegend").textContent = `${values.pickup} pedidos`;
-  $("#shipmentLegend").textContent = `${values.shipments} pedidos`;
-  $("#pickupPercent").textContent = `${pickupRate}%`;
-  $("#shipmentPercent").textContent = `${shipmentRate}%`;
-  $("#deliveredStrip").textContent = values.delivered;
-  $("#pendingDeliveryStrip").textContent = pendingDelivery;
+function renderKpis(v) {
+  const rate = v.total ? Math.round(v.completed / v.total * 100) : 0;
+  const processRate = v.total ? v.process / v.total * 100 : 0;
+  const storedRate = v.total ? v.stored / v.total * 100 : 0;
+  const finishedRate = v.total ? v.finished / v.total * 100 : 0;
+  const values = { kpiTotal: v.total, kpiPickup: v.process, kpiShipments: v.stored, kpiFinished: v.finished, kpiDelivered: v.delivered, kpiPending: v.pending };
+  Object.entries(values).forEach(([id, value]) => $("#" + id).textContent = String(value).padStart(2, "0"));
+  $("#kpiPickupNote").textContent = "Producción en curso";
+  $("#kpiFinishedNote").textContent = "Listos, pendientes de entrega";
+  $("#kpiDeliveredNote").textContent = "Entregados a cliente";
+  ["ordersCompletionBadge", "completionBadge"].forEach(id => $("#" + id).textContent = rate + "%");
+  ["ordersCompletionProgress", "completionProgress"].forEach(id => {
+    $("#" + id + " span").style.width = rate + "%";
+    $("#" + id).setAttribute("aria-label", `${rate}% de producción completada`);
+  });
+  $("#ordersFinishedCopy").textContent = `${v.completed} con producción completada`;
+  $("#ordersProcessCopy").textContent = `${v.process + v.stored} en proceso o resguardo`;
+  $("#ordersFinishedStat").textContent = v.finished;
+  $("#ordersProcessStat").textContent = v.process;
+  $("#ordersDeliveredStat").textContent = v.delivered;
+  $("#finishedCopy").textContent = `${v.completed} con producción completada`;
+  $("#pendingCopy").textContent = `${v.pending} pendientes de entrega`;
+  $("#routeCount").textContent = v.total;
+  $("#donutTotal").textContent = v.total;
+  $("#routeDonut").style.background = v.total ? `conic-gradient(#b78336 0 ${processRate}%, #80629d ${processRate}% ${processRate + storedRate}%, #3f7f63 ${processRate + storedRate}% ${processRate + storedRate + finishedRate}%, #557aa4 ${processRate + storedRate + finishedRate}% 100%)` : "conic-gradient(#d8ded8 0 100%)";
+  $("#routeDonut").setAttribute("aria-label", `${v.process} en proceso, ${v.stored} en resguardo, ${v.finished} terminados, ${v.delivered} entregados`);
+  $("#pickupLegend").textContent = `${v.process} pedidos`;
+  $("#shipmentLegend").textContent = `${v.stored} pedidos`;
+  $("#finishedLegend").textContent = `${v.finished} pedidos`;
+  $("#deliveredLegend").textContent = `${v.delivered} pedidos`;
+  $("#pickupPercent").textContent = Math.round(processRate) + "%";
+  $("#shipmentPercent").textContent = Math.round(storedRate) + "%";
+  $("#deliveredStrip").textContent = v.delivered;
+  $("#pendingDeliveryStrip").textContent = v.pending;
 }
 
 function orderRows(orders, emptyMessage) {
@@ -239,13 +231,13 @@ function orderRows(orders, emptyMessage) {
   return orders.map((order) => {
     const shipment = movementValue(order) === "Envío producción";
     const finished = isFinished(order);
-    const delivered = normalize(order.delivery) === "entregado";
+    const delivered = isDelivered(order);
     const avatarTone = cutters.indexOf(order.cutter) % 2 === 0 ? "avatar-blue" : "avatar-green";
     return `<tr>
       <td data-label="Pedido"><strong class="order-id">#${escapeHtml(order.id)}</strong></td>
       <td data-label="Cliente"><strong class="client-name">${escapeHtml(order.client)}</strong><small>Recibió: ${escapeHtml(order.receiver)}</small></td>
       <td data-label="Movimiento"><span class="movement-pill ${shipment ? "shipment" : "pickup"}">${escapeHtml(movementValue(order))}</span></td>
-      <td data-label="Cortador"><div class="cutter-cell"><span class="avatar ${avatarTone}">${escapeHtml(order.cutter.charAt(0) || "?")}</span><p><strong>${escapeHtml(order.cutter)}</strong><small>${finished ? "Finalizó el pedido" : "Corte asignado"}</small></p></div></td>
+      <td data-label="Operador"><div class="cutter-cell"><span class="avatar ${avatarTone}">${escapeHtml(String(order.cutter || "").charAt(0) || "?")}</span><p><strong>${escapeHtml(order.cutter)}</strong><small>${finished ? "Finalizó el pedido" : "Pedido asignado"}</small></p></div></td>
       <td data-label="Producción"><span class="status ${finished ? "done" : "pending"}"><i></i>${productionValue(order)}</span></td>
       <td data-label="Entrega"><span class="status ${delivered ? "delivered" : "waiting"}"><i></i>${escapeHtml(order.delivery)}</span>${order.driver ? `<small>Chofer: ${escapeHtml(order.driver)}</small>` : ""}</td>
       <td data-label="Registro"><span class="date-cell">${escapeHtml(order.date)}<small>${escapeHtml(order.time)} h</small></span></td>
@@ -254,10 +246,7 @@ function orderRows(orders, emptyMessage) {
 }
 
 function operationalStatus(order) {
-  if (isDelivered(order)) return "Entregados";
-  if (isQueuedForDelivery(order)) return "En fila";
-  if (isFinished(order)) return "Terminados";
-  return "Pendientes";
+  return orderModel.status(order);
 }
 
 function formatGroupDate(value) {
@@ -277,10 +266,10 @@ function groupDescription(mode, key, groupOrders) {
   if (mode === "date") return key ? `Pedidos registrados el ${groupOrders[0]?.date || key}` : "Pedidos sin fecha de registro";
   if (mode === "movement") return key === "CR" ? "Pedidos que recoge el cliente" : "Pedidos programados para salida de producción";
   return {
-    Pendientes: "Pedidos que todavía requieren proceso",
-    Terminados: "Corte terminado; pendiente de entrega",
-    "En fila": "Pedidos formados para su entrega",
-    Entregados: "Pedidos que ya concluyeron su recorrido",
+    "En proceso": "Producción en curso",
+    Terminado: "Producción terminada; pendiente de entrega",
+    "En resguardo": "Pedidos bajo resguardo",
+    "Entregado a cliente": "Entrega completada",
   }[key] || "Estado operativo del pedido";
 }
 
@@ -294,7 +283,7 @@ function buildOrderGroups(mode, orders = state.dataset.orders) {
     grouped.get(key).push(order);
   });
 
-  const statusOrder = { Pendientes: 0, "En fila": 1, Terminados: 2, Entregados: 3 };
+  const statusOrder = { "En proceso": 0, "En resguardo": 1, Terminado: 2, "Entregado a cliente": 3 };
   const movementOrder = { CR: 0, "Envío producción": 1, "SIN REGISTRO": 2 };
   return [...grouped.entries()].map(([key, groupedOrders]) => ({
     key,
@@ -330,7 +319,7 @@ function orderDisclosure(order) {
       <div><small>Cliente</small><strong>${escapeHtml(order.client)}</strong></div>
       <div><small>Recibió</small><strong>${escapeHtml(receiver)}</strong></div>
       <div><small>Movimiento</small><span class="movement-pill ${shipment ? "shipment" : "pickup"}">${escapeHtml(movementValue(order))}</span></div>
-      <div><small>Cortador responsable</small><strong>${escapeHtml(cutter)}</strong></div>
+      <div><small>Operador responsable</small><strong>${escapeHtml(cutter)}</strong></div>
       <div><small>Producción</small><span class="status ${finished ? "done" : "pending"}"><i></i>${productionValue(order)}</span></div>
       <div><small>Entrega</small><span class="status ${delivered ? "delivered" : "waiting"}"><i></i>${escapeHtml(order.delivery || "SIN REGISTRO")}</span></div>
       <div><small>Chofer</small><strong>${escapeHtml(driver)}</strong></div>
@@ -358,7 +347,7 @@ function notificationItem(order, index) {
     <span class="notification-order-copy">
       <small>Pedido #${escapeHtml(order.id)} · ${escapeHtml(order.date)} · ${escapeHtml(order.time)} h</small>
       <strong>${escapeHtml(order.client)}</strong>
-      <span>${escapeHtml(order.cutter || "Cortador pendiente")}</span>
+      <span>${escapeHtml(order.cutter || "Operador pendiente")}</span>
     </span>
     <span class="notification-tags">
       <span class="movement-pill ${shipment ? "shipment" : "pickup"}">${escapeHtml(movementValue(order))}</span>
@@ -369,14 +358,8 @@ function notificationItem(order, index) {
 }
 
 function assistantCounts(orders) {
-  const count = (label) => orders.filter((order) => operationalStatus(order) === label).length;
-  return {
-    total: orders.length,
-    pending: count("Pendientes"),
-    queued: count("En fila"),
-    finished: count("Terminados"),
-    delivered: count("Entregados"),
-  };
+  const v = metrics(orders);
+  return { total: v.total, pending: v.pending, process: v.process, queued: v.stored, finished: v.finished, delivered: v.delivered };
 }
 
 function assistantMetric(label, value, tone) {
@@ -388,7 +371,7 @@ function orderReportLine(order, index) {
     <span>${index + 1}</span>
     <div>
       <strong>Pedido #${escapeHtml(order.id)} · ${escapeHtml(order.client)}</strong>
-      <p>Movimiento: ${escapeHtml(movementValue(order))}. Cortador: ${escapeHtml(order.cutter || "SIN REGISTRO")}. Producción: ${escapeHtml(productionValue(order))}. Entrega: ${escapeHtml(order.delivery || "SIN REGISTRO")}. Registro: ${escapeHtml(order.date)} a las ${escapeHtml(order.time)} h.</p>
+      <p>Movimiento: ${escapeHtml(movementValue(order))}. Operador: ${escapeHtml(order.cutter || "SIN REGISTRO")}. Producción: ${escapeHtml(productionValue(order))}. Entrega: ${escapeHtml(order.delivery || "SIN REGISTRO")}. Registro: ${escapeHtml(order.date)} a las ${escapeHtml(order.time)} h.</p>
     </div>
   </li>`;
 }
@@ -402,14 +385,14 @@ function renderAssistant(recent) {
     $("#assistantHeadline").textContent = `Pedido #${selected.id}`;
     $("#assistantMetrics").innerHTML = [
       assistantMetric("Movimiento", movementValue(selected), "blue"),
-      assistantMetric("Cortador", selected.cutter || "SIN REGISTRO", "gold"),
+      assistantMetric("Operador", selected.cutter || "SIN REGISTRO", "gold"),
       assistantMetric("Producción", productionValue(selected), "red"),
       assistantMetric("Entrega", selected.delivery || "SIN REGISTRO", "green"),
     ].join("");
     $("#assistantMessage").innerHTML = `<div class="assistant-selected-report">
       <p class="assistant-greeting">Notificación completa</p>
       <h4>${escapeHtml(selected.client)}</h4>
-      <p>El pedido <strong>#${escapeHtml(selected.id)}</strong> fue recibido por <strong>${escapeHtml(selected.receiver || "SIN REGISTRO")}</strong>. Su movimiento es <strong>${escapeHtml(movementValue(selected))}</strong> y el cortador responsable es <strong>${escapeHtml(selected.cutter || "SIN REGISTRO")}</strong>.</p>
+      <p>El pedido <strong>#${escapeHtml(selected.id)}</strong> fue recibido por <strong>${escapeHtml(selected.receiver || "SIN REGISTRO")}</strong>. Su movimiento es <strong>${escapeHtml(movementValue(selected))}</strong> y el operador responsable es <strong>${escapeHtml(selected.cutter || "SIN REGISTRO")}</strong>.</p>
       <p>Producción: <strong>${escapeHtml(productionValue(selected))}</strong>. Entrega: <strong>${escapeHtml(selected.delivery || "SIN REGISTRO")}</strong>. Chofer: <strong>${escapeHtml(selected.driver || "SIN REGISTRO")}</strong>.</p>
       <p class="assistant-record-time">Registrado el ${escapeHtml(selected.date)} a las ${escapeHtml(selected.time)} h.</p>
     </div>`;
@@ -425,12 +408,12 @@ function renderAssistant(recent) {
   $("#assistantMetrics").innerHTML = [
     assistantMetric("Total", counts.total, "blue"),
     assistantMetric("Pendientes", counts.pending, "red"),
-    assistantMetric("En fila", counts.queued, "gold"),
+    assistantMetric("En resguardo", counts.queued, "gold"),
     assistantMetric("Entregados", counts.delivered, "green"),
   ].join("");
   $("#assistantMessage").innerHTML = recent.length ? `<div class="assistant-complete-report">
     <p class="assistant-greeting">Reporte completo de actividad reciente</p>
-    <p>Tienes <strong>${counts.pending} pendientes</strong>, <strong>${counts.queued} en fila</strong>, <strong>${counts.finished} terminados</strong> y <strong>${counts.delivered} entregados</strong>. Estos son los cinco ingresos más recientes:</p>
+    <p>Tienes <strong>${counts.process} en proceso</strong>, <strong>${counts.queued} en resguardo</strong>, <strong>${counts.finished} terminados</strong> y <strong>${counts.delivered} entregados</strong>. Estos son los cinco ingresos más recientes:</p>
     <ol class="assistant-report-list">${recent.map(orderReportLine).join("")}</ol>
   </div>` : `<p>No hay notificaciones de pedidos por el momento.</p>`;
   $("#assistantSummaryBtn").hidden = true;
@@ -460,51 +443,17 @@ function renderSearchModule() {
     : `Vista general · ${state.dataset.orders.length} pedidos · Último registro ${formatTimestamp(state.dataset.meta.lastRecordAt)}`;
   $("#searchCountLabel").textContent = `${orders.length} ${orders.length === 1 ? "resultado" : "resultados"}`;
   $("#resetBtn").disabled = !hasFilters;
-  $("#searchOrdersBody").innerHTML = orderRows(orders, "No hay CR o envíos que coincidan con la búsqueda.");
+  $("#searchOrdersBody").innerHTML = orderRows(orders, "No hay pedidos que coincidan con la búsqueda.");
   renderAdvancedCounts();
 }
 
 function renderCutterModule() {
-  const orders = state.dataset.orders;
-  const names = unique(orders.map((order) => order.cutter));
-  const stats = names.map((name) => {
-    const assignedOrders = orders.filter((order) => order.cutter === name);
-    const values = metrics(assignedOrders);
-    return {
-      name,
-      total: values.total,
-      finished: values.finished,
-      process: Math.max(values.total - values.finished, 0),
-      pickup: values.pickup,
-      shipments: values.shipments,
-      delivered: values.delivered,
-      rate: values.total ? Math.round((values.finished / values.total) * 100) : 0,
-    };
-  }).sort((a, b) => b.rate - a.rate || b.finished - a.finished || a.name.localeCompare(b.name, "es-MX"));
-
-  const cuttersWithFinished = stats.filter((item) => item.finished > 0).length;
-  const cuttersWithProcess = stats.filter((item) => item.process > 0).length;
-  $("#cutterSummary").innerHTML = `
-    <div><span>Cortadores activos</span><strong>${stats.length}</strong></div>
-    <div><span>Con pedidos terminados</span><strong>${cuttersWithFinished}</strong></div>
-    <div><span>Con trabajo en proceso</span><strong>${cuttersWithProcess}</strong></div>`;
-
-  $("#cutterGrid").innerHTML = stats.length ? stats.map((stat, index) => `
-    <article class="cutter-card">
-      <div class="cutter-card-head">
-        <span class="avatar ${index % 2 === 0 ? "avatar-blue" : "avatar-green"}">${escapeHtml(stat.name.charAt(0) || "?")}</span>
-        <div><p>CORTADOR</p><h3>${escapeHtml(stat.name)}</h3></div>
-        <strong class="cutter-rate">${stat.rate}%</strong>
-      </div>
-      <div class="cutter-progress" aria-label="${stat.rate}% terminado"><span style="width:${stat.rate}%"></span></div>
-      <div class="cutter-card-stats">
-        <div><span>Asignados</span><strong>${stat.total}</strong></div>
-        <div><span>Terminados</span><strong>${stat.finished}</strong></div>
-        <div><span>En proceso</span><strong>${stat.process}</strong></div>
-        <div><span>CR / Envíos</span><strong>${stat.pickup} / ${stat.shipments}</strong></div>
-      </div>
-      <button class="view-cutter-orders" type="button" data-cutter-name="${escapeHtml(stat.name)}">Ver pedidos de ${escapeHtml(stat.name)} <span aria-hidden="true">→</span></button>
-    </article>`).join("") : `<div class="empty-state">No hay cortadores registrados.</div>`;
+  const stats = orderModel.ranks(state.dataset.orders);
+  $("#cutterSummary").innerHTML = `<div><span>Operadores activos</span><strong>${stats.length}</strong></div><div><span>Con pendientes</span><strong>${stats.filter(s => s.pending).length}</strong></div><div><span>Con entregas</span><strong>${stats.filter(s => s.delivered).length}</strong></div>`;
+  $("#cutterGrid").innerHTML = stats.length ? stats.map((s, index) => `
+    <article class="cutter-card"><div class="cutter-card-head"><span class="avatar ${index % 2 ? "avatar-green" : "avatar-blue"}">${escapeHtml(s.name.charAt(0))}</span><div><p>OPERADOR</p><h3>${escapeHtml(s.name)}</h3></div><strong class="cutter-rate">${s.total}</strong></div>
+    <div class="cutter-card-stats"><div><span>Total</span><strong>${s.total}</strong></div><div><span>Pendientes</span><strong>${s.pending}</strong></div><div><span>En proceso</span><strong>${s.process}</strong></div><div><span>En resguardo</span><strong>${s.stored}</strong></div><div><span>Terminados</span><strong>${s.finished}</strong></div><div><span>Entregados</span><strong>${s.delivered}</strong></div></div>
+    <button class="view-cutter-orders" type="button" data-cutter-name="${escapeHtml(s.name)}">Ver pedidos de ${escapeHtml(s.name)} →</button></article>`).join("") : `<div class="empty-state">No hay operadores registrados.</div>`;
 }
 
 function pieBackground(items) {
@@ -521,95 +470,35 @@ function pieBackground(items) {
 }
 
 function cutterChartStats(orders) {
-  return unique(orders.map((order) => order.cutter)).filter((name) => !isUnassignedCutter(name)).map((name, index) => {
-    const assignedOrders = orders.filter((order) => order.cutter === name);
-    const delivered = assignedOrders.filter(isDelivered).length;
-    const queued = assignedOrders.filter(isQueuedForDelivery).length;
-    const pending = Math.max(assignedOrders.length - delivered - queued, 0);
-    return {
-      name,
-      total: assignedOrders.length,
-      pending,
-      queued,
-      delivered,
-      color: CHART_COLORS[index % CHART_COLORS.length],
-    };
-  }).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "es-MX"));
+  return orderModel.ranks(orders).map((s, i) => ({ ...s, queued: s.stored, color: CHART_COLORS[i % CHART_COLORS.length] }));
 }
 
 function renderChartsModule() {
-  const orders = state.dataset.orders;
-  const total = orders.length;
-  const cutterStats = cutterChartStats(orders);
-  const unassigned = orders.filter((order) => isUnassignedCutter(order.cutter)).length;
-  const cutterSlices = [
-    ...cutterStats,
-    ...(unassigned ? [{ name: "SIN ASIGNAR", total: unassigned, color: "#88756a", unassigned: true }] : []),
-  ];
-  const leader = cutterStats[0];
-  const delivered = orders.filter(isDelivered).length;
-  const queued = orders.filter(isQueuedForDelivery).length;
-  const pending = Math.max(total - delivered - queued, 0);
-  const deliveredRate = total ? Math.round((delivered / total) * 100) : 0;
-
+  const v = metrics(state.dataset.orders);
+  const stats = cutterChartStats(state.dataset.orders);
+  const leader = stats[0];
   $("#chartLeaderName").textContent = leader ? leader.name : "Sin datos";
-  $("#chartLeaderCopy").textContent = leader
-    ? `${leader.total} ${leader.total === 1 ? "pedido" : "pedidos"} · ${Math.round((leader.total / total) * 100)}% del total`
-    : "0 pedidos";
-  $("#chartActiveCutters").textContent = cutterStats.length;
-  $("#chartDeliveredTotal").textContent = delivered;
-  $("#chartDeliveredCopy").textContent = `${deliveredRate}% del total`;
-
-  $("#cutterPieTotal").textContent = total;
-  $("#cutterPieCount").textContent = `${total} ${total === 1 ? "pedido" : "pedidos"}`;
-  $("#cutterPie").style.background = pieBackground(cutterSlices.map((stat) => ({ value: stat.total, color: stat.color })));
-  $("#cutterPie").setAttribute("aria-label", cutterSlices.length
-    ? cutterSlices.map((stat) => `${stat.name}: ${stat.total} pedidos`).join(", ")
-    : "Sin pedidos por cortador");
-  $("#cutterPieLegend").innerHTML = cutterSlices.length ? cutterSlices.map((stat, index) => {
-    const share = total ? Math.round((stat.total / total) * 100) : 0;
-    const isLeader = !stat.unassigned && index === 0;
-    return `<div class="pie-legend-row ${isLeader ? "leader" : ""}">
-      <i style="background:${stat.color}"></i>
-      <p><strong>${escapeHtml(stat.name)}${isLeader ? "<em>Más pedidos</em>" : ""}</strong><small>${stat.total} ${stat.total === 1 ? "pedido" : "pedidos"}</small></p>
-      <b>${share}%</b>
-    </div>`;
-  }).join("") : `<p class="chart-empty">No hay datos para mostrar.</p>`;
-
-  const statusStats = [
-    { label: "Pendientes", description: "Corte aún en proceso", value: pending, color: "#a83d36" },
-    { label: "En fila", description: "Terminados; esperan entrega", value: queued, color: "#c18a35" },
-    { label: "Entregados", description: "Pedidos completados", value: delivered, color: "#4d8d62" },
-  ];
-  $("#deliveryPieTotal").textContent = total;
-  $("#deliveryPieRate").textContent = `${deliveredRate}%`;
-  $("#deliveryPie").style.background = pieBackground(statusStats);
-  $("#deliveryPie").setAttribute("aria-label", statusStats.map((stat) => `${stat.label}: ${stat.value} pedidos`).join(", "));
-  $("#deliveryPieLegend").innerHTML = statusStats.map((stat) => `
-    <div class="pie-legend-row">
-      <i style="background:${stat.color}"></i>
-      <p><strong>${stat.label}</strong><small>${stat.description}</small></p>
-      <b>${stat.value}</b>
-    </div>`).join("");
-
-  $("#chartCutterGrid").innerHTML = cutterStats.length ? cutterStats.map((stat, index) => `
-    <article class="chart-cutter-card">
-      <div class="chart-cutter-head">
-        <span class="chart-avatar" style="background:${stat.color}22;color:${stat.color}">${escapeHtml(stat.name.charAt(0) || "?")}</span>
-        <div><strong>${escapeHtml(stat.name)}</strong><small>${index === 0 ? "Mayor número de pedidos" : `${Math.round((stat.total / total) * 100)}% de la carga`}</small></div>
-        <b>${stat.total}</b>
-      </div>
-      <div class="chart-stage-grid">
-        <span><i class="stage-pending"></i><b>${stat.pending}</b><small>Pendientes</small></span>
-        <span><i class="stage-queued"></i><b>${stat.queued}</b><small>En fila</small></span>
-        <span><i class="stage-delivered"></i><b>${stat.delivered}</b><small>Entregados</small></span>
-      </div>
-    </article>`).join("") : `<p class="chart-empty">No hay cortadores registrados.</p>`;
+  $("#chartLeaderCopy").textContent = leader ? `${leader.total} pedidos · ${leader.pending} pendientes` : "0 pedidos";
+  $("#chartActiveCutters").textContent = stats.length;
+  $("#chartDeliveredTotal").textContent = v.delivered;
+  $("#chartDeliveredCopy").textContent = `${v.pending} pendientes de entrega`;
+  $("#cutterPieTotal").textContent = v.total;
+  $("#cutterPieCount").textContent = `${v.total} pedidos`;
+  $("#cutterPie").style.background = pieBackground(stats.map(s => ({ value: s.total, color: s.color })));
+  $("#cutterPie").setAttribute("aria-label", stats.map(s => `${s.name}: ${s.total}`).join(", ") || "Sin pedidos");
+  $("#cutterPieLegend").innerHTML = stats.map((s, i) => `<div class="pie-legend-row ${i ? "" : "leader"}"><i style="background:${s.color}"></i><p><strong>${escapeHtml(s.name)}${i ? "" : "<em>Más pedidos</em>"}</strong><small>${s.pending} pendientes</small></p><b>${s.total}</b></div>`).join("") || `<p class="chart-empty">No hay datos para mostrar.</p>`;
+  const stages = [{ label: "En proceso", value: v.process, color: "#b78336" }, { label: "En resguardo", value: v.stored, color: "#80629d" }, { label: "Terminado", value: v.finished, color: "#3f7f63" }, { label: "Entregado a cliente", value: v.delivered, color: "#557aa4" }];
+  $("#deliveryPieTotal").textContent = v.total;
+  $("#deliveryPieRate").textContent = (v.total ? Math.round(v.delivered / v.total * 100) : 0) + "%";
+  $("#deliveryPie").style.background = pieBackground(stages);
+  $("#deliveryPie").setAttribute("aria-label", stages.map(s => `${s.label}: ${s.value}`).join(", "));
+  $("#deliveryPieLegend").innerHTML = stages.map(s => `<div class="pie-legend-row"><i style="background:${s.color}"></i><p><strong>${s.label}</strong></p><b>${s.value}</b></div>`).join("");
+  $("#chartCutterGrid").innerHTML = stats.map((s, i) => `<article class="chart-cutter-card"><div class="chart-cutter-head"><span class="chart-avatar" style="background:${s.color}22;color:${s.color}">${escapeHtml(s.name.charAt(0))}</span><div><strong>${escapeHtml(s.name)}</strong><small>${s.pending} pendientes de entrega</small></div><b>${s.total}</b></div><div class="chart-stage-grid"><span><b>${s.process}</b><small>En proceso</small></span><span><b>${s.stored}</b><small>En resguardo</small></span><span><b>${s.finished}</b><small>Terminado</small></span><span><b>${s.delivered}</b><small>Entregados</small></span></div></article>`).join("") || `<p class="chart-empty">No hay operadores registrados.</p>`;
 }
 
 function spokenOrderReport(order, index) {
   const prefix = Number.isInteger(index) ? `Notificación ${index + 1}. ` : "";
-  return `${prefix}Pedido ${order.id}, cliente ${order.client}. Movimiento ${movementValue(order)}. Cortador ${order.cutter || "sin registro"}. Producción ${productionValue(order)}. Entrega ${order.delivery || "sin registro"}. Registrado el ${order.date} a las ${order.time}.`;
+  return `${prefix}Pedido ${order.id}, cliente ${order.client}. Movimiento ${movementValue(order)}. Operador ${order.cutter || "sin registro"}. Producción ${productionValue(order)}. Entrega ${order.delivery || "sin registro"}. Registrado el ${order.date} a las ${order.time}.`;
 }
 
 function assistantNarration() {
@@ -621,7 +510,7 @@ function assistantNarration() {
   }
   if (!recent.length) return "No hay notificaciones de pedidos por el momento.";
   const counts = assistantCounts(orders);
-  const intro = `Hola, soy Tony. Este es tu reporte completo. Hay ${counts.total} pedidos bajo seguimiento: ${counts.pending} pendientes, ${counts.queued} en fila, ${counts.finished} terminados y ${counts.delivered} entregados. Los cinco ingresos más recientes son los siguientes.`;
+  const intro = `Hola, soy Tony. Este es tu reporte completo. Hay ${counts.total} pedidos bajo seguimiento: ${counts.process} en proceso, ${counts.queued} en resguardo, ${counts.finished} terminados y ${counts.delivered} entregados. Los cinco ingresos más recientes son los siguientes.`;
   return `${intro} ${recent.map(spokenOrderReport).join(" ")}`;
 }
 
@@ -742,10 +631,11 @@ function tonyStatusAnswer(command) {
   const counts = assistantCounts(state.dataset.orders);
   if (!/\b(cuantos|cuantas|cuanto|estado)\b/.test(command)) return null;
   if (command.includes("pendiente")) return `Hay ${counts.pending} pedidos pendientes.`;
-  if (command.includes("fila")) return `Hay ${counts.queued} pedidos en fila.`;
+  if (command.includes("resguardo") || command.includes("fila")) return `Hay ${counts.queued} pedidos en resguardo.`;
+  if (command.includes("proceso")) return `Hay ${counts.process} pedidos en proceso.`;
   if (command.includes("terminado")) return `Hay ${counts.finished} pedidos terminados.`;
   if (command.includes("entregado")) return `Hay ${counts.delivered} pedidos entregados.`;
-  return `Hay ${counts.total} pedidos en total: ${counts.pending} pendientes, ${counts.queued} en fila, ${counts.finished} terminados y ${counts.delivered} entregados.`;
+  return `Hay ${counts.total} pedidos en total: ${counts.process} en proceso, ${counts.queued} en resguardo, ${counts.finished} terminados y ${counts.delivered} entregados.`;
 }
 
 function handleTonyCommand(transcript) {
@@ -890,13 +780,13 @@ function latestTonySummary() {
   const counts = assistantCounts(state.dataset.orders);
   const latest = latestOrders(state.dataset.orders, 1)[0];
   const lastOrder = latest ? ` El último es el pedido #${latest.id} de ${latest.client}.` : "";
-  return `Hay ${counts.total} pedidos: ${counts.pending} pendientes, ${counts.queued} en fila, ${counts.finished} terminados y ${counts.delivered} entregados.${lastOrder}`;
+  return `Hay ${counts.total} pedidos: ${counts.process} en proceso, ${counts.queued} en resguardo, ${counts.finished} terminados y ${counts.delivered} entregados.${lastOrder}`;
 }
 
 function tonyModuleFromCommand(command) {
   if (!/\b(abre|abrir|muestra|mostrar|ve|ir|cambia|cambiar)\b/.test(command)) return null;
   if (/\b(busqueda|buscador|buscar)\b/.test(command)) return "search";
-  if (/\b(cortador|cortadores)\b/.test(command)) return "cutters";
+  if (/\b(operador|operadores)\b/.test(command)) return "cutters";
   if (/\b(grafica|graficas|analisis)\b/.test(command)) return "charts";
   if (/\b(pedido|pedidos|inicio|actividad)\b/.test(command)) return "orders";
   return null;
@@ -904,7 +794,7 @@ function tonyModuleFromCommand(command) {
 
 function selectedOrderTonyAnswer(order, matches = 1) {
   const matchCopy = matches > 1 ? ` Encontré ${matches} coincidencias y te muestro la más reciente.` : "";
-  return `Pedido #${order.id} de ${order.client}. Está ${operationalStatus(order).toLowerCase()}, con ${order.cutter || "cortador sin asignar"}. Movimiento: ${movementValue(order)}. Entrega: ${order.delivery || "sin registro"}.${matchCopy}`;
+  return `Pedido #${order.id} de ${order.client}. Está ${operationalStatus(order).toLowerCase()}, con ${order.cutter || "operador sin asignar"}. Movimiento: ${movementValue(order)}. Entrega: ${order.delivery || "sin registro"}.${matchCopy}`;
 }
 
 function resolveTonyPrompt(rawPrompt) {
@@ -916,7 +806,7 @@ function resolveTonyPrompt(rawPrompt) {
   }
 
   if (/\b(ayuda|puedes hacer|que puedes hacer|comandos)\b/.test(command)) {
-    return { reply: "Puedo buscar por pedido o cliente, contar pendientes, en fila, terminados o entregados; decir quién tiene mayor carga; mostrar los últimos pedidos y abrir Pedidos, Buscador, Cortadores o Gráficas." };
+    return { reply: "Puedo buscar por pedido o cliente, contar pendientes, en proceso, en resguardo, terminados o entregados; decir quién tiene mayor carga; mostrar los últimos pedidos y abrir Pedidos, Buscador, Operadores o Gráficas." };
   }
 
   if (/\b(resumen|notificaciones|ultimos|ultimo|recientes|reciente)\b/.test(command) && !/\bpedido\s+\d/.test(command)) {
@@ -934,7 +824,7 @@ function resolveTonyPrompt(rawPrompt) {
 
   if (/quien.*mas pedidos|mayor carga|mas carga/.test(command)) {
     const leader = cutterChartStats(state.dataset.orders)[0];
-    return { reply: leader ? `El cortador con más pedidos es ${leader.name}, con ${leader.total} pedidos asignados.` : "Aún no hay pedidos asignados a cortadores." };
+    return { reply: leader ? `El operador con más pedidos es ${leader.name}, con ${leader.total} pedidos asignados.` : "Aún no hay pedidos asignados a operadores." };
   }
 
   if (/\b(porcentaje|avance)\b/.test(command) && /\b(entregad|terminad)\b/.test(command)) {
@@ -1187,9 +1077,19 @@ async function loadData({ quiet = false } = {}) {
 
   dataRefreshInFlight = (async () => {
     try {
-      const response = await fetch(`data/produccion.json?t=${Date.now()}`, { cache: "no-store" });
-      if (!response.ok) throw new Error(`No se pudo leer el JSON (${response.status}).`);
-      const dataset = await response.json();
+      let dataset;
+      let offline = false;
+      try {
+        const response = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: "no-store", signal: AbortSignal.timeout(15000) });
+        if (!response.ok) throw new Error(`No se pudo leer el JSON (${response.status}).`);
+        dataset = await response.json();
+        if (dataset.meta?.schemaVersion !== 4 || !Array.isArray(dataset.orders)) throw new Error("La publicación no tiene el formato SQLite esperado.");
+        try { localStorage.setItem("produ-snapshot-v4", JSON.stringify(dataset)); } catch (_) { /* Cache opcional. */ }
+      } catch (error) {
+        try { dataset = JSON.parse(localStorage.getItem("produ-snapshot-v4") || "null"); } catch (_) { dataset = null; }
+        if (!dataset || dataset.meta?.schemaVersion !== 4 || !Array.isArray(dataset.orders)) throw error;
+        offline = true;
+      }
       if (!dataset.meta || !Array.isArray(dataset.orders)) throw new Error("El JSON no tiene el formato esperado.");
 
       const currentVersion = `${state.dataset.meta?.generatedAt || ""}|${state.dataset.meta?.sourceModifiedAt || ""}|${state.dataset.orders.length}`;
@@ -1202,7 +1102,9 @@ async function loadData({ quiet = false } = {}) {
         syncControls();
         notifyTonyOfNewOrders(previousOrders, dataset.orders);
       }
-      if (!quiet || changed) {
+      if (offline) {
+        showMessage("working", `No se pudo actualizar. Mostrando la copia guardada del ${formatTimestamp(dataset.meta.generatedAt)}.`);
+      } else if (!quiet || changed) {
         showMessage("success", changed
           ? `Datos sincronizados: ${dataset.orders.length} pedidos disponibles.`
           : `Ya cuentas con la versión más reciente: ${dataset.orders.length} pedidos.`);

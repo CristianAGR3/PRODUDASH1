@@ -1,0 +1,16 @@
+const assert = require("node:assert/strict");
+const model = require("./orders-model.js");
+const orders = model.statuses.map((status, i) => ({ id: String(i), status, cutter: i < 2 ? "José" : "Ana" }));
+const values = model.metrics(orders);
+assert.equal(values.total, 4);
+assert.equal(values.pending, 3);
+assert.equal(values.process, 1);
+assert.equal(values.stored, 1);
+assert.equal(values.finished, 1);
+assert.equal(values.delivered, 1);
+assert.equal(values.completed, 2);
+assert.equal(model.status({ delivery: "ENTREGADO", production: "TERMINADO" }), "Entregado a cliente");
+assert.equal(model.status({ status: "En resguardo", production: "PENDIENTE" }), "En resguardo");
+assert.equal(model.ranks([...orders, { status: "En proceso", cutter: "JOSE" }])[0].total, 3);
+assert.equal(model.metrics([]).total, 0);
+console.log("Modelo del dashboard: 11 comprobaciones correctas.");
