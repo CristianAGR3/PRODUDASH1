@@ -1,4 +1,4 @@
-# PRODU Control 1.0.1
+# PRODU Control 1.0.2
 
 Aplicación portable de Windows de 64 bits para administrar pedidos de producción con SQLite. El ejecutable incluye Python: no necesitas instalar Python, Excel ni un servidor MySQL.
 
@@ -33,6 +33,8 @@ Si el dashboard pertenece a otra base, existe una versión más nueva o el JSON 
 Si GitHub rechaza la subida, revisa el token, su vencimiento, el repositorio elegido, el permiso Contents y las reglas de la rama. Los pedidos locales permanecen guardados. Cuando caduque el token, reemplázalo en Configuración.
 
 Desde la versión 1.0.1, el mensaje de error incluye el código HTTP y el detalle devuelto por GitHub. Los rechazos por permisos se distinguen de los límites de solicitudes. Para recibir ayuda, comparte el texto del error; el programa oculta cualquier token que pudiera aparecer en ese texto.
+
+Desde la versión 1.0.2, el formulario de pedidos conserva los botones Guardar pedido y Cancelar en un área fija y permite desplazar los campos en ventanas pequeñas. La ventana se puede redimensionar.
 
 ## Respaldos y reportes
 

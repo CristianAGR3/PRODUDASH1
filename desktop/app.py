@@ -17,7 +17,7 @@ from core import Database, STATUSES, display_date, export_csv, local_datetime, r
 from sync import DEFAULTS, SETTINGS_DIR, Publisher, load_settings, protect, save_settings
 
 BASE_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 
 class Application(ttk.Window):
@@ -358,33 +358,65 @@ class Application(ttk.Window):
         row = self.db.get(order_id) if order_id is not None else None
         dialog = ttk.Toplevel(self)
         dialog.title("Editar pedido" if row else "Nuevo pedido")
-        dialog.geometry("590x620")
-        dialog.resizable(False, False)
+        dialog.geometry(f"610x{min(680, self.winfo_screenheight()-120)}")
+        dialog.minsize(560, min(520, self.winfo_screenheight()-120))
+        dialog.resizable(True, True)
         dialog.transient(self)
         dialog.grab_set()
-        box = ttk.Frame(dialog, padding=26)
+        box = ttk.Frame(dialog, padding=24)
         box.pack(fill="both", expand=True)
-        ttk.Label(box, text="Editar pedido" if row else "Registrar pedido", style="Section.TLabel").pack(anchor="w")
-        ttk.Label(box, text=("Registro original: " + display_date(row["created_at"])) if row else "La fecha y hora se asignan automáticamente al guardar.", foreground="#6d8076").pack(anchor="w", pady=(5, 14))
+        box.columnconfigure(0, weight=1)
+        box.rowconfigure(1, weight=1)
+        heading = ttk.Frame(box)
+        heading.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+        ttk.Label(heading, text="Editar pedido" if row else "Registrar pedido", style="Section.TLabel").pack(anchor="w")
+        ttk.Label(heading, text=("Registro original: " + display_date(row["created_at"])) if row else "La fecha y hora se asignan automáticamente al guardar.", foreground="#6d8076", wraplength=500).pack(anchor="w", pady=(5, 0))
+        # Keep actions in a separate, fully sized row. The form can scroll on
+        # small screens or with larger Windows text without clipping buttons.
+        footer = ttk.Frame(box)
+        footer.grid(row=2, column=0, sticky="ew", pady=(14, 0))
+        ttk.Separator(footer).pack(fill="x", pady=(0, 8))
+        error = ttk.Label(footer, text="", foreground="#b45353", wraplength=500)
+        error.pack(anchor="w", fill="x", pady=(0, 8))
+        buttons = ttk.Frame(footer)
+        buttons.pack(fill="x")
+        buttons.columnconfigure(0, weight=1)
+        form_area = ttk.Frame(box)
+        form_area.grid(row=1, column=0, sticky="nsew")
+        form_area.rowconfigure(0, weight=1)
+        form_area.columnconfigure(0, weight=1)
+        canvas = tk.Canvas(form_area, highlightthickness=0)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(form_area, orient="vertical", command=canvas.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        canvas.configure(yscrollcommand=scrollbar.set, background=self.style.colors.bg)
+        fields = ttk.Frame(canvas, padding=(0, 0, 12, 2))
+        fields_id = canvas.create_window((0, 0), window=fields, anchor="nw")
+        fields.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(fields_id, width=event.width))
+        def scroll_form(event):
+            if event.widget.winfo_class() in ("TCombobox", "Text"):
+                return None
+            canvas.yview_scroll(-int(event.delta / 120), "units")
+            return "break"
+        dialog.bind("<MouseWheel>", scroll_form)
         variables = {}
         entries = []
         for field, label in (("ticket", "Ticket *"), ("client", "Cliente *"), ("operator", "Operador *"), ("status", "Estatus *")):
-            ttk.Label(box, text=label).pack(anchor="w", pady=(6, 4))
+            ttk.Label(fields, text=label).pack(anchor="w", pady=(6, 4))
             var = tk.StringVar(value=row[field] if row else (STATUSES[0] if field == "status" else ""))
             variables[field] = var
             if field in ("client", "operator", "status"):
-                widget = ttk.Combobox(box, textvariable=var, values=STATUSES if field == "status" else self.db.names(field), state="readonly" if field == "status" else "normal")
+                widget = ttk.Combobox(fields, textvariable=var, values=STATUSES if field == "status" else self.db.names(field), state="readonly" if field == "status" else "normal")
             else:
-                widget = ttk.Entry(box, textvariable=var)
+                widget = ttk.Entry(fields, textvariable=var)
             widget.pack(fill="x")
             entries.append(widget)
-        ttk.Label(box, text="Observaciones (opcionales, solo en la base local)").pack(anchor="w", pady=(12, 5))
-        notes = tk.Text(box, height=4, font=("Segoe UI", 10), relief="solid", bd=1, wrap="word")
+        ttk.Label(fields, text="Observaciones (opcionales, solo en la base local)", wraplength=490).pack(anchor="w", pady=(12, 5))
+        notes = tk.Text(fields, height=4, font=("Segoe UI", 10), relief="solid", bd=1, wrap="word")
         notes.pack(fill="x")
         if row:
             notes.insert("1.0", row["notes"])
-        error = ttk.Label(box, text="", foreground="#b45353", wraplength=520)
-        error.pack(anchor="w", pady=6)
         def save():
             try:
                 self.db.save(**{k: v.get() for k, v in variables.items()}, notes=notes.get("1.0", "end-1c"), order_id=order_id,
@@ -394,14 +426,15 @@ class Application(ttk.Window):
                 return
             dialog.destroy()
             self.refresh()
-        buttons = ttk.Frame(box)
-        buttons.pack(side="bottom", fill="x")
-        ttk.Button(buttons, text="Guardar pedido", bootstyle="success", command=save).pack(side="right")
-        ttk.Button(buttons, text="Cancelar", bootstyle="dark-outline", command=dialog.destroy).pack(side="right", padx=10)
+        cancel_button = ttk.Button(buttons, text="Cancelar", width=12, bootstyle="dark-outline", command=dialog.destroy)
+        cancel_button.grid(row=0, column=1, sticky="e", padx=(0, 10))
+        save_button = ttk.Button(buttons, text="Guardar pedido", width=16, bootstyle="success", command=save)
+        save_button.grid(row=0, column=2, sticky="e")
         dialog.bind("<Escape>", lambda e: dialog.destroy())
         dialog.bind("<Control-Return>", lambda e: save())
         entries[0].focus_set()
-        return {"dialog": dialog, "variables": variables, "save": save, "notes": notes, "error": error}
+        return {"dialog": dialog, "variables": variables, "save": save, "notes": notes, "error": error,
+                "save_button": save_button, "cancel_button": cancel_button, "form_canvas": canvas}
 
     def show_history(self):
         order_id = self.selected_id()
