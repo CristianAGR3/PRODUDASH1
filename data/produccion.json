@@ -1,13 +1,13 @@
 {
   "meta": {
     "schemaVersion": 4,
-    "generatedAt": "2026-10-08T18:33:30.845568+00:00",
+    "generatedAt": "2026-10-08T18:39:35.161550+00:00",
     "source": "SQLite · PRODU Control",
     "sourceModifiedAt": null,
     "lastRecordAt": null,
     "totalOrders": 0,
     "databaseId": "b85ea9dc-93b3-4a04-a1f3-3b4655933a2c",
-    "revision": 0
+    "revision": 2
   },
   "orders": []
 }
