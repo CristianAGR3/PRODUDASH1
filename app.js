@@ -26,7 +26,7 @@ const MODULES = {
 };
 
 const CHART_COLORS = ["#3f7f63", "#b78336", "#8f3630", "#557aa4", "#80629d", "#4f9698", "#bc6d45", "#728048"];
-const DATA_REFRESH_INTERVAL = 30000;
+const DATA_REFRESH_INTERVAL = 5000;
 const DATA_URL = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname)
   ? "data/produccion.json"
   : "https://raw.githubusercontent.com/CristianAGR3/PRODUDASH1/main/data/produccion.json";
@@ -136,8 +136,9 @@ function productionValue(order) {
 }
 
 function orderDate(order) {
-  if (!order.recordAt) return "";
-  const date = new Date(order.recordAt);
+  const recorded = order.created_at || order.recordAt;
+  if (!recorded) return "";
+  const date = new Date(recorded);
   if (Number.isNaN(date.getTime())) return "";
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
   const part = type => parts.find(p => p.type === type).value;
@@ -148,7 +149,7 @@ function filteredOrders() {
   const query = normalize(state.query.trim());
   return state.dataset.orders.filter((order) => {
     const date = orderDate(order);
-    const searchable = `${order.id} ${order.client} ${order.cutter} ${order.receiver} ${order.driver || ""}`;
+    const searchable = `${order.ticket || order.id} ${order.client} ${order.operator || order.cutter} ${order.receiver || ""} ${order.driver || ""}`;
     return (!query || normalize(searchable).includes(query))
       && (state.movement === "Todos" || movementValue(order) === state.movement)
       && (state.cutter === "Todos" || normalize(order.cutter) === normalize(state.cutter))
@@ -227,20 +228,22 @@ function renderKpis(v) {
 
 function orderRows(orders, emptyMessage) {
   if (!orders.length) return `<tr><td colspan="7" class="empty-state">${escapeHtml(emptyMessage)}</td></tr>`;
-  const cutters = unique(state.dataset.orders.map((order) => order.cutter));
   return orders.map((order) => {
-    const shipment = movementValue(order) === "Envío producción";
-    const finished = isFinished(order);
-    const delivered = isDelivered(order);
-    const avatarTone = cutters.indexOf(order.cutter) % 2 === 0 ? "avatar-blue" : "avatar-green";
+    const ticket = order.ticket || order.id || "—";
+    const operator = order.operator || order.cutter || "SIN REGISTRO";
+    const status = operationalStatus(order);
+    const statusClass = isDelivered(order) ? "delivered" : status === "Terminado" ? "done" : "pending";
+    const created = order.created_at || order.recordAt;
+    const updated = order.updated_at || order.updatedAt;
+    const deliveredAt = order.delivered_at || order.deliveredAt;
     return `<tr>
-      <td data-label="Pedido"><strong class="order-id">#${escapeHtml(order.id)}</strong></td>
-      <td data-label="Cliente"><strong class="client-name">${escapeHtml(order.client)}</strong><small>Recibió: ${escapeHtml(order.receiver)}</small></td>
-      <td data-label="Movimiento"><span class="movement-pill ${shipment ? "shipment" : "pickup"}">${escapeHtml(movementValue(order))}</span></td>
-      <td data-label="Operador"><div class="cutter-cell"><span class="avatar ${avatarTone}">${escapeHtml(String(order.cutter || "").charAt(0) || "?")}</span><p><strong>${escapeHtml(order.cutter)}</strong><small>${finished ? "Finalizó el pedido" : "Pedido asignado"}</small></p></div></td>
-      <td data-label="Producción"><span class="status ${finished ? "done" : "pending"}"><i></i>${productionValue(order)}</span></td>
-      <td data-label="Entrega"><span class="status ${delivered ? "delivered" : "waiting"}"><i></i>${escapeHtml(order.delivery)}</span>${order.driver ? `<small>Chofer: ${escapeHtml(order.driver)}</small>` : ""}</td>
-      <td data-label="Registro"><span class="date-cell">${escapeHtml(order.date)}<small>${escapeHtml(order.time)} h</small></span></td>
+      <td data-label="Ticket"><strong class="order-id">#${escapeHtml(ticket)}</strong></td>
+      <td data-label="Cliente"><strong class="client-name">${escapeHtml(order.client || "SIN REGISTRO")}</strong></td>
+      <td data-label="Operador">${escapeHtml(operator)}</td>
+      <td data-label="Estatus"><span class="status ${statusClass}"><i></i>${escapeHtml(status)}</span></td>
+      <td data-label="Registro">${escapeHtml(formatTimestamp(created))}</td>
+      <td data-label="Último cambio">${escapeHtml(formatTimestamp(updated))}</td>
+      <td data-label="Entrega">${deliveredAt ? escapeHtml(formatTimestamp(deliveredAt)) : "—"}</td>
     </tr>`;
   }).join("");
 }
@@ -298,32 +301,30 @@ function buildOrderGroups(mode, orders = state.dataset.orders) {
 }
 
 function orderDisclosure(order) {
-  const shipment = movementValue(order) === "Envío producción";
-  const finished = isFinished(order);
-  const delivered = isDelivered(order);
   const status = operationalStatus(order);
-  const cutter = order.cutter || "SIN REGISTRO";
-  const receiver = order.receiver || "SIN REGISTRO";
-  const driver = order.driver || "SIN REGISTRO";
+  const ticket = order.ticket || order.id || "—";
+  const operator = order.operator || order.cutter || "SIN REGISTRO";
+  const created = order.created_at || order.recordAt;
+  const updated = order.updated_at || order.updatedAt;
+  const deliveredAt = order.delivered_at || order.deliveredAt;
+  const statusClass = isDelivered(order) ? "delivered" : status === "Terminado" ? "done" : "pending";
   return `<details class="order-record">
     <summary>
-      <span class="order-record-id"><small>Pedido</small><strong>#${escapeHtml(order.id)}</strong></span>
-      <span class="order-record-client"><strong>${escapeHtml(order.client)}</strong><small>${escapeHtml(order.date)} · ${escapeHtml(order.time)} h</small></span>
+      <span class="order-record-id"><small>Ticket</small><strong>#${escapeHtml(ticket)}</strong></span>
+      <span class="order-record-client"><strong>${escapeHtml(order.client || "SIN REGISTRO")}</strong><small>Operador: ${escapeHtml(operator)}</small></span>
       <span class="order-record-tags">
-        <span class="movement-pill ${shipment ? "shipment" : "pickup"}">${escapeHtml(movementValue(order))}</span>
-        <span class="order-stage-tag stage-${normalize(status).replace(/\s+/g, "-")}">${escapeHtml(status)}</span>
+        <span class="status ${statusClass}"><i></i>${escapeHtml(status)}</span>
       </span>
       <span class="order-record-action"><b>Ver detalle</b><i aria-hidden="true">⌄</i></span>
     </summary>
     <div class="order-record-details">
-      <div><small>Cliente</small><strong>${escapeHtml(order.client)}</strong></div>
-      <div><small>Recibió</small><strong>${escapeHtml(receiver)}</strong></div>
-      <div><small>Movimiento</small><span class="movement-pill ${shipment ? "shipment" : "pickup"}">${escapeHtml(movementValue(order))}</span></div>
-      <div><small>Operador responsable</small><strong>${escapeHtml(cutter)}</strong></div>
-      <div><small>Producción</small><span class="status ${finished ? "done" : "pending"}"><i></i>${productionValue(order)}</span></div>
-      <div><small>Entrega</small><span class="status ${delivered ? "delivered" : "waiting"}"><i></i>${escapeHtml(order.delivery || "SIN REGISTRO")}</span></div>
-      <div><small>Chofer</small><strong>${escapeHtml(driver)}</strong></div>
-      <div><small>Fecha y hora de registro</small><strong>${escapeHtml(order.date)} · ${escapeHtml(order.time)} h</strong></div>
+      <div><small>Ticket</small><strong>#${escapeHtml(ticket)}</strong></div>
+      <div><small>Cliente</small><strong>${escapeHtml(order.client || "SIN REGISTRO")}</strong></div>
+      <div><small>Operador</small><strong>${escapeHtml(operator)}</strong></div>
+      <div><small>Estatus</small><strong>${escapeHtml(status)}</strong></div>
+      <div><small>Registro</small><strong>${escapeHtml(formatTimestamp(created))}</strong></div>
+      <div><small>Último cambio</small><strong>${escapeHtml(formatTimestamp(updated))}</strong></div>
+      <div><small>Entrega</small><strong>${deliveredAt ? escapeHtml(formatTimestamp(deliveredAt)) : "—"}</strong></div>
     </div>
   </details>`;
 }
@@ -1275,3 +1276,4 @@ setModule(initialModule(), { updateUrl: false });
 updateConnectionStatus();
 loadData({ quiet: true });
 startDataRefresh();
+

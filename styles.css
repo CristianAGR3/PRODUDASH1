@@ -398,6 +398,8 @@ h2 { margin-bottom: 0; font-size: 18px; letter-spacing: -.02em; }
 .quick-tabs button { padding: 6px 9px; border: 0; border-radius: 7px; background: transparent; color: #728491; font-size: 9px; font-weight: 750; }
 .quick-tabs button.selected { background: #fff; color: var(--ink); box-shadow: 0 2px 8px rgba(20,47,65,.09); }
 .table-wrap { width: 100%; overflow-x: auto; }
+.responsive-table th,
+.responsive-table td { text-align: center; }
 table { width: 100%; min-width: 1020px; border-collapse: collapse; }
 th { padding: 10px 13px; background: #f7f9fa; color: #748794; font-size: 9px; letter-spacing: .06em; text-align: left; text-transform: uppercase; }
 td { padding: 11px 13px; border-top: 1px solid #edf1f3; vertical-align: middle; font-size: 10px; }
