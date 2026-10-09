@@ -1,4 +1,4 @@
-const CACHE_NAME = "produ-pwa-20261008-v18-github-api";
+const CACHE_NAME = "produ-pwa-20261009-v21-dark-fire-cleanup";
 const CACHE_PREFIX = "produ-pwa-";
 const APP_SHELL = [
   "./",

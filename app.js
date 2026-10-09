@@ -96,7 +96,7 @@ function applyTheme(theme) {
   const dark = theme === "dark";
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   const themeColor = document.querySelector('meta[name="theme-color"]');
-  if (themeColor) themeColor.setAttribute("content", dark ? "#090d0a" : "#efe3cc");
+  if (themeColor) themeColor.setAttribute("content", dark ? "#09080d" : "#f5f1f8");
   $("#themeBtn").setAttribute("aria-pressed", String(dark));
   $("#themeIcon").textContent = dark ? "☀" : "☾";
   $("#themeBtnText").textContent = dark ? "Modo claro" : "Modo oscuro";
@@ -227,7 +227,7 @@ function renderKpis(v) {
 }
 
 function orderRows(orders, emptyMessage) {
-  if (!orders.length) return `<tr><td colspan="7" class="empty-state">${escapeHtml(emptyMessage)}</td></tr>`;
+  if (!orders.length) return `<tr><td colspan="9" class="empty-state">${escapeHtml(emptyMessage)}</td></tr>`;
   return orders.map((order) => {
     const ticket = order.ticket || order.id || "—";
     const operator = order.operator || order.cutter || "SIN REGISTRO";
@@ -241,6 +241,8 @@ function orderRows(orders, emptyMessage) {
       <td data-label="Cliente"><strong class="client-name">${escapeHtml(order.client || "SIN REGISTRO")}</strong></td>
       <td data-label="Operador">${escapeHtml(operator)}</td>
       <td data-label="Estatus"><span class="status ${statusClass}"><i></i>${escapeHtml(status)}</span></td>
+      <td data-label="Modalidad">${escapeHtml(order.delivery_method || "—")}</td>
+      <td data-label="Ubicación">${escapeHtml(order.placement || "—")}</td>
       <td data-label="Registro">${escapeHtml(formatTimestamp(created))}</td>
       <td data-label="Último cambio">${escapeHtml(formatTimestamp(updated))}</td>
       <td data-label="Entrega">${deliveredAt ? escapeHtml(formatTimestamp(deliveredAt)) : "—"}</td>
@@ -322,6 +324,8 @@ function orderDisclosure(order) {
       <div><small>Cliente</small><strong>${escapeHtml(order.client || "SIN REGISTRO")}</strong></div>
       <div><small>Operador</small><strong>${escapeHtml(operator)}</strong></div>
       <div><small>Estatus</small><strong>${escapeHtml(status)}</strong></div>
+      <div><small>Modalidad</small><strong>${escapeHtml(order.delivery_method || "—")}</strong></div>
+      <div><small>Ubicación</small><strong>${escapeHtml(order.placement || "—")}</strong></div>
       <div><small>Registro</small><strong>${escapeHtml(formatTimestamp(created))}</strong></div>
       <div><small>Último cambio</small><strong>${escapeHtml(formatTimestamp(updated))}</strong></div>
       <div><small>Entrega</small><strong>${deliveredAt ? escapeHtml(formatTimestamp(deliveredAt)) : "—"}</strong></div>

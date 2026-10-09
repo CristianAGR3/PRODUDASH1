@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="description" content="Dashboard operativo de producción para consultar pedidos, búsquedas y operadores.">
-    <meta name="theme-color" content="#090d0a">
+    <meta name="theme-color" content="#09080d">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -20,7 +20,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="icon-192.png">
     <script>try{document.documentElement.dataset.theme=localStorage.getItem("produ-theme")||"light"}catch(e){}</script>
-    <link rel="stylesheet" href="styles.css?v=db-fields-20261008-api">
+    <link rel="stylesheet" href="styles.css?v=dark-fire-cleanup-20261009">
   </head>
   <body>
     <div class="app-shell">
@@ -199,8 +199,8 @@
             <div class="orders-heading"><div><p class="eyebrow">RESULTADOS</p><h2>Pedidos encontrados</h2></div><span id="searchCountLabel" class="results-badge">0 resultados</span></div>
             <div class="table-wrap responsive-table">
               <table>
-                <thead><tr><th>Ticket</th><th>Cliente</th><th>Operador</th><th>Estatus</th><th>Registro</th><th>Último cambio</th><th>Entrega</th></tr></thead>
-                <tbody id="searchOrdersBody"><tr><td colspan="7" class="empty-state">Usa los filtros para consultar pedidos.</td></tr></tbody>
+                <thead><tr><th>Ticket</th><th>Cliente</th><th>Operador</th><th>Estatus</th><th>Modalidad</th><th>Ubicación</th><th>Registro</th><th>Último cambio</th><th>Entrega</th></tr></thead>
+                <tbody id="searchOrdersBody"><tr><td colspan="9" class="empty-state">Usa los filtros para consultar pedidos.</td></tr></tbody>
               </table>
             </div>
           </section>
