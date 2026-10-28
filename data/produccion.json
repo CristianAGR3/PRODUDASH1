@@ -1,13 +1,13 @@
 {
   "meta": {
     "schemaVersion": 4,
-    "generatedAt": "2026-10-28T16:37:57.709729+00:00",
+    "generatedAt": "2026-10-28T16:49:45.946714+00:00",
     "source": "SQLite · PRODU Control",
-    "sourceModifiedAt": "2026-10-28T16:37:54.204458+00:00",
+    "sourceModifiedAt": "2026-10-28T16:49:35.921472+00:00",
     "lastRecordAt": "2026-10-28T16:37:54.204458+00:00",
     "totalOrders": 197,
     "databaseId": "1b75a661-d3bf-44de-afd7-8596f1a5b90d",
-    "revision": 337
+    "revision": 338
   },
   "orders": [
     {
@@ -498,22 +498,22 @@
       "ticket": "211525",
       "client": "SAMUEL ASIGMA",
       "operator": "JULIAN",
-      "status": "En proceso",
+      "status": "Terminado",
       "delivery_method": "CLIENTE RECOGE",
-      "placement": "",
+      "placement": "PISO",
       "created_at": "2026-10-27T18:10:25.510553+00:00",
-      "updated_at": "2026-10-27T18:10:25.510553+00:00",
+      "updated_at": "2026-10-28T16:49:35.921472+00:00",
       "delivered_at": null,
       "cutter": "JULIAN",
       "movement": "Producción",
-      "production": "EN PROCESO",
+      "production": "TERMINADO",
       "delivery": "PENDIENTE",
       "receiver": "SIN REGISTRO",
       "driver": null,
       "date": "27/10/2026",
       "time": "12:10",
       "recordAt": "2026-10-27T12:10:25.510553-06:00",
-      "updatedAt": "2026-10-27T18:10:25.510553+00:00",
+      "updatedAt": "2026-10-28T16:49:35.921472+00:00",
       "deliveredAt": null
     },
     {
