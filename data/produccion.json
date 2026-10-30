@@ -1,13 +1,13 @@
 {
   "meta": {
     "schemaVersion": 4,
-    "generatedAt": "2026-10-30T19:07:13.107107+00:00",
+    "generatedAt": "2026-10-30T19:55:19.981177+00:00",
     "source": "SQLite · PRODU Control",
-    "sourceModifiedAt": "2026-10-30T19:07:11.160883+00:00",
+    "sourceModifiedAt": "2026-10-30T19:55:17.115019+00:00",
     "lastRecordAt": "2026-10-30T17:00:55.521248+00:00",
     "totalOrders": 215,
     "databaseId": "1b75a661-d3bf-44de-afd7-8596f1a5b90d",
-    "revision": 386
+    "revision": 387
   },
   "orders": [
     {
@@ -245,22 +245,22 @@
       "ticket": "211819",
       "client": "EDUARDO VALDEZ",
       "operator": "JULIAN",
-      "status": "En proceso",
+      "status": "Terminado",
       "delivery_method": "CLIENTE RECOGE",
-      "placement": "",
+      "placement": "PISO",
       "created_at": "2026-10-29T17:39:28.781715+00:00",
-      "updated_at": "2026-10-29T17:39:28.781715+00:00",
+      "updated_at": "2026-10-30T19:55:17.115019+00:00",
       "delivered_at": null,
       "cutter": "JULIAN",
       "movement": "Producción",
-      "production": "EN PROCESO",
+      "production": "TERMINADO",
       "delivery": "PENDIENTE",
       "receiver": "SIN REGISTRO",
       "driver": null,
       "date": "29/10/2026",
       "time": "11:39",
       "recordAt": "2026-10-29T11:39:28.781715-06:00",
-      "updatedAt": "2026-10-29T17:39:28.781715+00:00",
+      "updatedAt": "2026-10-30T19:55:17.115019+00:00",
       "deliveredAt": null
     },
     {
