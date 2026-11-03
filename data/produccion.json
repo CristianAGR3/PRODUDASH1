@@ -1,13 +1,13 @@
 {
   "meta": {
     "schemaVersion": 4,
-    "generatedAt": "2026-11-03T20:08:07.807956+00:00",
+    "generatedAt": "2026-11-03T20:10:05.526111+00:00",
     "source": "SQLite · PRODU Control",
-    "sourceModifiedAt": "2026-11-03T20:06:33.051254+00:00",
+    "sourceModifiedAt": "2026-11-03T20:09:47.962635+00:00",
     "lastRecordAt": "2026-11-03T16:12:42.579761+00:00",
     "totalOrders": 254,
     "databaseId": "1b75a661-d3bf-44de-afd7-8596f1a5b90d",
-    "revision": 544
+    "revision": 545
   },
   "orders": [
     {
@@ -452,22 +452,22 @@
       "ticket": "315291",
       "client": "MARIA EUGENIA SANTAELLA",
       "operator": "ROBERTO",
-      "status": "En proceso",
+      "status": "Terminado",
       "delivery_method": "CLIENTE RECOGE",
-      "placement": "",
+      "placement": "TARIMA",
       "created_at": "2026-11-02T18:26:08.810330+00:00",
-      "updated_at": "2026-11-02T18:26:08.810330+00:00",
+      "updated_at": "2026-11-03T20:09:47.962635+00:00",
       "delivered_at": null,
       "cutter": "ROBERTO",
       "movement": "Producción",
-      "production": "EN PROCESO",
+      "production": "TERMINADO",
       "delivery": "PENDIENTE",
       "receiver": "SIN REGISTRO",
       "driver": null,
       "date": "02/11/2026",
       "time": "12:26",
       "recordAt": "2026-11-02T12:26:08.810330-06:00",
-      "updatedAt": "2026-11-02T18:26:08.810330+00:00",
+      "updatedAt": "2026-11-03T20:09:47.962635+00:00",
       "deliveredAt": null
     },
     {
